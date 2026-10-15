@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能体 · 数据优选与闭环寻优系统</title>
+  <link rel="stylesheet" href="./vendor/element-plus.css">
+  <script src="./vendor/vue.global.prod.js"></script>
+  <script src="./vendor/element-plus.full.min.js"></script>
+  <script src="./vendor/echarts.min.js"></script>
+  <style>
+    body { margin: 0; background: #f5f7fa; font-family: "Microsoft YaHei", sans-serif; }
+    .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .login-card { width: 380px; }
+    .app-body { padding: 18px; }
+    .stat-card { cursor: pointer; transition: box-shadow .2s; }
+    .stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+    .chart-box { height: 320px; }
+    .task-progress { margin: 6px 0; }
+    .figure-img { max-width: 100%; border: 1px solid #e4e7ed; border-radius: 4px; margin-top: 8px; }
+    .el-table .cell { word-break: keep-all; }
+    .workspace-grid { display:grid; grid-template-columns:minmax(300px,.9fr) minmax(420px,1.3fr); gap:16px; align-items:start; }
+    .plan-step { padding:10px 0; border-bottom:1px solid #ebeef5; }
+    .metric-grid { display:grid; grid-template-columns:repeat(4,minmax(100px,1fr)); gap:10px; margin-bottom:16px; }
+    .metric { padding:12px; background:#f5f7fa; border-left:3px solid #409eff; }
+    .metric strong { display:block; font-size:21px; color:#303133; }
+    .metric span { color:#909399; font-size:12px; }
+    .assistant-fab { position:fixed; right:24px; bottom:24px; z-index:2100; box-shadow:0 3px 12px rgba(0,0,0,.22); }
+    .assistant-messages { height:calc(100vh - 255px); overflow:auto; padding:12px 16px; background:#f5f7fa; }
+    .assistant-bubble { max-width:92%; padding:10px 12px; margin:8px 0; border-radius:6px; white-space:pre-wrap; line-height:1.55; }
+    .assistant-bubble.user { margin-left:auto; background:#e8f3ff; color:#1f2937; }
+    .assistant-bubble.assistant { margin-right:auto; background:#fff; border:1px solid #e4e7ed; color:#303133; }
+    .assistant-actions { display:flex; gap:6px; flex-wrap:wrap; padding:8px 16px; }
+    @media (max-width:900px) { .workspace-grid { grid-template-columns:1fr; } .metric-grid { grid-template-columns:repeat(2,minmax(100px,1fr)); } }
+  </style>
+<script src="./static-demo-adapter.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- 登录 -->
+  <div v-if="!token" class="login-wrap">
+    <el-card class="login-card">
+      <template #header><b>智能体系统登录</b></template>
+      <el-form label-width="70px" @keyup.enter="doLogin">
+        <el-form-item label="用户名"><el-input v-model="loginForm.username" placeholder="admin"></el-input></el-form-item>
+        <el-form-item label="密码"><el-input v-model="loginForm.password" type="password" show-password placeholder="admin123"></el-input></el-form-item>
+        <el-form-item>
+          <el-button type="primary" style="width:100%" :loading="loginLoading" @click="doLogin">登 录</el-button>
+        </el-form-item>
+      </el-form>
+      <div style="font-size:12px;color:#909399">默认账号：admin/admin123、engineer/eng123、algorithm/algo123、viewer/view123</div>
+    </el-card>
+  </div>
+
+  <!-- 主界面 -->
+  <el-container v-else>
+    <el-header style="background:#001529;color:#fff;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:bold">智能体 · 数据优选与闭环寻优</div>
+      <div>
+        <el-tag size="small" style="margin-right:8px">{{ user.role }} · {{ user.display_name || user.username }}</el-tag>
+        <el-button size="small" @click="logout">退出</el-button>
+      </div>
+    </el-header>
+    <el-container>
+      <el-aside width="170px" style="background:#fff">
+        <el-menu :default-active="active" @select="active = $event" style="border-right:none">
+          <el-menu-item index="dashboard">工作台</el-menu-item>
+          <el-menu-item index="datasets">数据集</el-menu-item>
+          <el-menu-item index="kb">企业知识库</el-menu-item>
+          <el-menu-item index="preprocess" v-if="canRW">预处理分析</el-menu-item>
+          <el-menu-item index="tasks" v-if="canRW">Agent 工作台</el-menu-item>
+          <el-menu-item index="reports">分析报告</el-menu-item>
+          <el-menu-item index="settings" v-if="user.role==='admin'||user.role==='algorithm'">算法模板</el-menu-item>
+          <el-menu-item index="users" v-if="user.role==='admin'">用户与角色</el-menu-item>
+          <el-menu-item index="audit" v-if="user.role==='admin'">审计日志</el-menu-item>
+        </el-menu>
+      </el-aside>
+      <el-main style="padding:0">
+        <div class="app-body">
+          <!-- 工作台 -->
+          <div v-if="active==='dashboard'">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div><h2 style="margin:0 0 4px">流程工业数据优选工作台</h2><span style="color:#909399">{{ user.display_name || user.username }} · {{ roleLabel(user.role) }}</span></div>
+              <div><el-tag :type="serviceState.type" effect="plain">Agent {{ serviceState.label }}</el-tag> <el-button type="primary" style="margin-left:8px" :disabled="!canRW" @click="nav('tasks')">新建 Agent 任务</el-button></div>
+            </div>
+            <el-row :gutter="16">
+              <el-col :span="6" v-for="s in statCards" :key="s.label">
+                <el-card class="stat-card" @click="nav(s.to)">
+                  <div style="font-size:30px;color:#409EFF">{{ s.value }}</div>
+                  <div style="color:#909399">{{ s.label }}</div>
+                </el-card>
+              </el-col>
+            </el-row>
+            <el-card style="margin-top:16px">
+              <template #header>快速开始</template>
+              <el-steps :active="4" align-center finish-status="success" style="padding:8px 0">
+                <el-step title="生成/上传数据" description="数据集页"></el-step>
+                <el-step title="列名校验" description="自动校验 Time 与数值列"></el-step>
+                <el-step title="提交寻优任务" description="异步执行 + WebSocket 实时进度"></el-step>
+                <el-step title="导出报告" description="PDF / CSV / 图表"></el-step>
+              </el-steps>
+            </el-card>
+            <el-card style="margin-top:16px">
+              <template #header><div style="display:flex;justify-content:space-between;align-items:center"><b>最近任务</b><el-button text type="primary" @click="nav('tasks')">全部任务</el-button></div></template>
+              <el-table :data="tasks.slice(0,8)" size="small" empty-text="还没有运行记录">
+                <el-table-column prop="id" label="任务" width="90"></el-table-column><el-table-column prop="dataset_id" label="数据集" width="90"></el-table-column>
+                <el-table-column prop="status" label="状态" width="110"><template #default="{row}"><el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag></template></el-table-column>
+                <el-table-column label="FIT" width="100"><template #default="{row}">{{ row.best_fit == null ? '-' : Number(row.best_fit).toFixed(1)+'%' }}</template></el-table-column>
+                <el-table-column prop="current_stage" label="当前阶段"></el-table-column><el-table-column prop="created_at" label="创建时间" width="170"></el-table-column>
+                <el-table-column label="操作" width="90"><template #default="{row}"><el-button text type="primary" @click="showTask(row.id)">查看</el-button></template></el-table-column>
+              </el-table>
+            </el-card>
+          </div>
+
+          <!-- 企业知识库（文档上传 / 向量入库 / 权限管控） -->
+          <div v-if="active==='kb'">
+            <el-card style="margin-bottom:14px">
+              <template #header>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <b>企业知识库 · 文档上传与权限管理</b>
+                  <div>
+                    <el-tag v-if="kbStatus.ready" type="success" size="small">{{ kbStatus.vector_db }}</el-tag>
+                    <el-tag v-if="kbStatus.llm_configured" type="success" size="small" style="margin-left:6px">DeepSeek 已接入</el-tag>
+                    <el-tag v-else type="warning" size="small" style="margin-left:6px">未配置大模型</el-tag>
+                    <el-button size="small" style="margin-left:8px" @click="loadKb">刷新</el-button>
+                    <el-button size="small" type="primary" @click="openKbChat">打开 AI 问答</el-button>
+                  </div>
+                </div>
+              </template>
+              <el-descriptions :column="5" border size="small">
+                <el-descriptions-item label="Embedding 模型">{{ kbEmbName }}</el-descriptions-item>
+                <el-descriptions-item label="向量维度">{{ kbStatus.embedding_dim || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="已入库文档">{{ kbDocs.length }}</el-descriptions-item>
+                <el-descriptions-item label="向量分片">{{ kbStatus.chunk_count }}</el-descriptions-item>
+                <el-descriptions-item label="未入库文件">{{ kbOrphans.length }}</el-descriptions-item>
+              </el-descriptions>
+              <el-alert v-if="kbMe.username && !kbMe.can_upload" type="info" :closable="false" style="margin-top:12px"
+                        title="当前账号没有知识库上传权限：可查看被授权的文档。如需上传，请联系管理员在「用户与角色」中开通。"></el-alert>
+              <el-alert v-if="kbOrphans.length" type="warning" :closable="false" style="margin-top:12px"
+                        :title="'发现 ' + kbOrphans.length + ' 个已上传但未入库的文件（只落盘、未进向量库）：' + kbOrphanNames">
+              </el-alert>
+              <div v-if="kbOrphans.length && kbMe.can_upload" style="margin-top:8px">
+                <el-button size="small" type="warning" :loading="kbRescanning" @click="doKbRescan">一键恢复到知识库</el-button>
+              </div>
+            </el-card>
+
+            <el-card v-if="kbMe.can_upload" style="margin-bottom:14px">
+              <template #header><b>上传企业文件</b><span style="color:#909399;font-size:12px;margin-left:8px;font-weight:400">解析 → 切分 → 向量化 → 写入 Milvus → 登记可见范围</span></template>
+              <el-upload drag multiple :auto-upload="false" :file-list="kbUploadList"
+                         :on-change="onKbFileChange" :on-remove="onKbFileChange"
+                         accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.txt,.md,.csv,.json">
+                <el-button type="primary">点击选择文件</el-button>
+                <template #tip><div class="el-upload__tip">支持 PDF / Word / Excel / PPT / TXT / Markdown / CSV / JSON，可多选、可拖拽</div></template>
+              </el-upload>
+              <el-form inline style="margin-top:12px">
+                <el-form-item label="分片大小"><el-input-number v-model="kbChunkSize" :min="100" :max="4000" :step="64"></el-input-number></el-form-item>
+                <el-form-item label="分片重叠"><el-input-number v-model="kbChunkOverlap" :min="0" :max="1200" :step="10"></el-input-number></el-form-item>
+                <el-form-item label="文件说明"><el-input v-model="kbFileDesc" placeholder="可选，如：2025 年度运行总结" style="width:220px"></el-input></el-form-item>
+              </el-form>
+              <el-form inline>
+                <el-form-item label="可见范围">
+                  <el-select v-model="kbPerm" style="width:200px">
+                    <el-option label="全部登录用户可见" value="public"></el-option>
+                    <el-option label="按角色可见" value="role"></el-option>
+                    <el-option label="指定用户可见" value="user"></el-option>
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="角色" v-if="kbPerm==='role'">
+                  <el-select v-model="kbPermRoles" multiple style="width:320px" placeholder="选择角色">
+                    <el-option v-for="r in kbRoles" :key="r.value" :label="r.label + '（' + r.value + '）'" :value="r.value"></el-option>
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="用户" v-if="kbPerm==='user'">
+                  <el-select v-model="kbPermUsers" multiple filterable style="width:400px" placeholder="选择用户">
+                    <el-option v-for="u in kbUsers" :key="u.username" :label="(u.display_name||u.username) + '（' + u.username + '）'" :value="u.username"></el-option>
+                  </el-select>
+                </el-form-item>
+              </el-form>
+              <el-button type="success" :loading="kbUploading" :disabled="!kbUploadList.length" @click="doKbUpload">
+                开始上传并入库（{{ kbUploadList.length }} 个文件）
+              </el-button>
+              <el-progress v-if="kbUploading || kbProgress" :percentage="kbProgress" :status="kbProgressStatus" style="margin-top:12px"></el-progress>
+            </el-card>
+
+            <el-card>
+              <template #header>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <b>已入库文档（向量数据库）</b>
+                  <div>
+                    <el-input v-model="kbKeyword" placeholder="搜索文件名 / 上传人" clearable size="small" style="width:200px" @keyup.enter="loadKbDocs"></el-input>
+                    <el-button size="small" style="margin-left:6px" @click="loadKbDocs">搜索</el-button>
+                  </div>
+                </div>
+              </template>
+              <el-table :data="kbDocs" stripe v-loading="kbLoading">
+                <el-table-column prop="file_name" label="文件名" min-width="200"></el-table-column>
+                <el-table-column prop="uploader" label="上传人" width="110"></el-table-column>
+                <el-table-column prop="upload_time" label="上传时间" width="160"></el-table-column>
+                <el-table-column prop="chunk_count" label="分片" width="70"></el-table-column>
+                <el-table-column label="切分参数" width="110"><template #default="{row}">{{ kbParams(row) }}</template></el-table-column>
+                <el-table-column label="可见范围" min-width="180"><template #default="{row}"><el-tag v-for="(p,i) in row.permission_labels" :key="i" size="small" effect="plain" style="margin-right:4px">{{ p }}</el-tag></template></el-table-column>
+                <el-table-column label="操作" width="210">
+                  <template #default="{ row }">
+                    <el-button size="small" @click="showKbChunks(row)">查看分片</el-button>
+                    <el-button size="small" v-if="row.can_manage" @click="openKbPerm(row)">权限</el-button>
+                    <el-button size="small" type="danger" v-if="row.can_manage" @click="delKbDoc(row)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+
+            <el-dialog v-model="kbChunkVisible" :title="'分片预览 · ' + kbChunkDoc.file_name" width="900px">
+              <div v-loading="kbChunkLoading" style="max-height:60vh;overflow:auto">
+                <el-alert v-if="kbChunkDoc.doc_id" type="info" :closable="false" style="margin-bottom:10px"
+                          :title="'共 ' + kbChunkDoc.chunk_count + ' 个分片 · 切分参数 ' + kbParams(kbChunkDoc)"></el-alert>
+                <div v-for="c in kbChunks" :key="c.chunk_index" style="margin-bottom:10px">
+                  <div style="font-size:12px;color:#909399;margin-bottom:4px">#{{ c.chunk_index + 1 }} · {{ c.char_count }} 字符<span v-if="c.page"> · 第 {{ c.page }} 页</span></div>
+                  <div style="background:#fafafa;border:1px solid #eee;border-radius:6px;padding:9px;white-space:pre-wrap;line-height:1.75;font-size:13px">{{ c.text }}</div>
+                </div>
+                <el-empty v-if="!kbChunkLoading && !kbChunks.length" description="没有分片" :image-size="80"></el-empty>
+              </div>
+              <template #footer><el-button @click="kbChunkVisible=false">关闭</el-button></template>
+            </el-dialog>
+
+            <el-dialog v-model="kbPermVisible" :title="'修改可见范围 · ' + kbPermDoc.file_name" width="620px">
+              <el-form label-position="top">
+                <el-form-item label="可见范围">
+                  <el-select v-model="kbPermEdit" style="width:100%">
+                    <el-option label="全部登录用户可见" value="public"></el-option>
+                    <el-option label="按角色可见" value="role"></el-option>
+                    <el-option label="指定用户可见" value="user"></el-option>
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="角色" v-if="kbPermEdit==='role'">
+                  <el-select v-model="kbPermEditRoles" multiple style="width:100%">
+                    <el-option v-for="r in kbRoles" :key="r.value" :label="r.label + '（' + r.value + '）'" :value="r.value"></el-option>
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="用户" v-if="kbPermEdit==='user'">
+                  <el-select v-model="kbPermEditUsers" multiple filterable style="width:100%">
+                    <el-option v-for="u in kbUsers" :key="u.username" :label="(u.display_name||u.username) + '（' + u.username + '）'" :value="u.username"></el-option>
+                  </el-select>
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="kbPermVisible=false">取消</el-button>
+                <el-button type="primary" @click="saveKbPerm">保存</el-button>
+              </template>
+            </el-dialog>
+          </div>
+
+          <!-- 数据集 -->
+          <div v-if="active==='datasets'">
+            <el-row :gutter="16" style="margin-bottom:16px">
+              <el-col :span="10">
+                <el-card>
+                  <template #header><div style="display:flex;justify-content:space-between"><b>仿真测试集生成</b><el-tag size="small" effect="plain">稳态 · 阶跃 · 噪声 · 时滞</el-tag></div></template>
+                  <el-form inline>
+                    <el-form-item label="样本数">
+                      <el-input-number v-model="genForm.n_samples" :min="100" :max="100000" :step="100"></el-input-number>
+                    </el-form-item>
+                    <el-form-item label="稳态区段"><el-input-number v-model="genForm.steady_segments" :min="1" :max="20"></el-input-number></el-form-item>
+                    <el-form-item label="阶跃幅值"><el-input-number v-model="genForm.step_amp" :min="0.1" :max="100" :step="0.5"></el-input-number></el-form-item>
+                    <el-form-item label="噪声强度"><el-input-number v-model="genForm.noise_std" :min="0" :max="1" :step="0.01"></el-input-number></el-form-item>
+                    <el-form-item label="输入时滞"><el-input-number v-model="genForm.delay_1" :min="0" :max="100"></el-input-number><span style="margin:0 5px">/</span><el-input-number v-model="genForm.delay_2" :min="0" :max="100"></el-input-number></el-form-item>
+                    <el-form-item>
+                      <el-button type="primary" :loading="genLoading" @click="doGenerate">生成</el-button>
+                    </el-form-item>
+                  </el-form>
+                </el-card>
+              </el-col>
+              <el-col :span="14">
+                <el-card>
+                  <template #header>上传 CSV（自动列名校验）</template>
+                  <el-upload :auto-upload="false" :limit="10" multiple drag accept=".csv,.txt"
+                             :on-change="onFileChange" :file-list="uploadList">
+                    <el-button>选择文件</el-button>
+                  </el-upload>
+                  <div v-if="uploadResult.length" style="margin-top:10px">
+                    <div v-for="u in uploadResult" :key="u.dataset_id" style="margin-bottom:12px">
+                      <el-alert :title="u.validation && u.validation.ok ? u.name + '：列名校验通过，' + u.rows + ' 行 x ' + u.columns.length + ' 列' : u.error" :type="u.error?'error':'success'" :closable="false" style="margin-bottom:6px"></el-alert>
+                      <div v-for="w in u.warnings" :key="w"><el-alert :title="w" type="warning" :closable="false" style="margin-bottom:4px"></el-alert></div>
+                      <el-descriptions v-if="u.dataset_id" :column="1" border size="small">
+                        <el-descriptions-item label="时间列">{{ u.time_col || '未检测到' }}</el-descriptions-item>
+                        <el-descriptions-item label="数值列">{{ (u.numeric_columns || []).join(', ') }}</el-descriptions-item>
+                        <el-descriptions-item label="建议输入列">{{ ((u.suggestions||{}).input_cols||[]).join(', ') }}</el-descriptions-item>
+                        <el-descriptions-item label="建议输出列">{{ ((u.suggestions||{}).output_col||[]).join(', ') }}</el-descriptions-item>
+                      </el-descriptions>
+                    </div>
+                    <el-button type="success" size="small" @click="doUpload">确认上传并登记 {{ uploadList.length }} 个文件</el-button>
+                  </div>
+                </el-card>
+              </el-col>
+            </el-row>
+
+            <el-card v-if="active==='datasets'">
+              <template #header><div style="display:flex;justify-content:space-between;align-items:center"><b>工业时序数据集</b><div><el-button v-if="user.role==='viewer'" size="small" type="primary" @click="loadDemoDataset">加载精馏塔仿真数据</el-button><el-button size="small" @click="loadDatasets">刷新</el-button></div></div></template>
+              <el-table :data="datasets" stripe>
+                <el-table-column prop="id" label="ID" width="60"></el-table-column>
+                <el-table-column prop="name" label="名称"></el-table-column>
+                <el-table-column prop="source" label="来源" width="90"></el-table-column>
+                <el-table-column prop="row_count" label="行数" width="90"></el-table-column>
+                <el-table-column prop="column_count" label="变量数" width="80"></el-table-column>
+                <el-table-column label="时间范围" min-width="150"><template #default="{row}">{{ row.time_span || '概览后读取' }}</template></el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="160"></el-table-column>
+                <el-table-column label="操作" width="230">
+                  <template #default="{ row }">
+                    <el-button size="small" @click="showOverview(row.id)">概览</el-button>
+                    <el-button size="small" type="warning" v-if="canRW" @click="copyDs(row.id)">复制</el-button>
+                    <el-button size="small" type="danger" v-if="canRW" @click="delDs(row.id)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+          </div>
+
+          <div v-if="active==='preprocess'">
+            <el-row :gutter="16">
+              <el-col :xs="24" :lg="9"><el-card>
+                <template #header><b>单步预处理配置</b></template>
+                <el-form label-position="top">
+                  <el-form-item label="源数据集"><el-select v-model="taskForm.dataset_id" style="width:100%" placeholder="选择源数据集" @change="onTaskDatasetChange"><el-option v-for="d in datasets" :key="d.id" :value="d.id" :label="'#'+d.id+' '+d.name"></el-option></el-select></el-form-item>
+                  <el-form-item label="输出变量 Y"><el-select v-model="taskForm.output_col" filterable style="width:100%"><el-option v-for="c in taskColumns" :key="c" :value="c" :label="c"></el-option></el-select></el-form-item>
+                  <el-form-item label="输入变量 U"><el-select v-model="taskForm.input_cols" multiple filterable collapse-tags style="width:100%"><el-option v-for="c in taskColumns.filter(x=>x!==taskForm.output_col)" :key="c" :value="c" :label="c"></el-option></el-select></el-form-item>
+                  <el-row :gutter="10"><el-col :span="12"><el-form-item label="IQR 清洗"><el-input-number v-model="taskForm.iqr_mult" :min="0.5" :max="5" :step="0.1" style="width:100%"></el-input-number></el-form-item></el-col><el-col :span="12"><el-form-item label="动态窗口"><el-input-number v-model="taskForm.window" :min="10" :max="500" :step="10" style="width:100%"></el-input-number></el-form-item></el-col>
+                    <el-col :span="12"><el-form-item label="动态能量阈值"><el-slider v-model="taskForm.energy_ratio" :min="0.1" :max="1" :step="0.05" show-input></el-slider></el-form-item></el-col><el-col :span="12"><el-form-item label="最大时滞搜索"><el-input-number v-model="taskForm.max_lag" :min="0" :max="200" style="width:100%"></el-input-number></el-form-item></el-col>
+                    <el-col :span="24"><el-form-item label="共线性阈值"><el-slider v-model="taskForm.corr_threshold" :min="0.5" :max="0.999" :step="0.005" show-input></el-slider></el-form-item></el-col>
+                  </el-row>
+                  <el-button type="primary" :loading="preprocessLoading" @click="doPreprocess">执行预处理并保存版本</el-button>
+                </el-form>
+              </el-card></el-col>
+              <el-col :xs="24" :lg="15"><el-card>
+                <template #header><div style="display:flex;justify-content:space-between;align-items:center"><b>预处理结果复核</b><el-button v-if="preprocessResult" size="small" type="primary" @click="continueWithPrepared">送入 Agent 闭环寻优</el-button></div></template>
+                <template v-if="preprocessResult">
+                  <div class="metric-grid"><div class="metric"><strong>{{preprocessResult.rows}}</strong><span>处理后样本数</span></div><div class="metric"><strong>{{preprocessResult.selected_rows}}</strong><span>动态优选样本</span></div><div class="metric"><strong>{{preprocessResult.input_cols.length}}</strong><span>保留输入变量</span></div><div class="metric"><strong>{{preprocessResult.segments.length}}</strong><span>有效动态段</span></div></div>
+                  <el-alert :title="'已保存为数据集 #'+preprocessResult.dataset_id+'；时滞补偿：'+JSON.stringify(preprocessResult.lags)+'；剔除：'+(preprocessResult.removed_cols.join(', ')||'无')" type="success" :closable="false"></el-alert>
+                  <el-tabs style="margin-top:12px"><el-tab-pane label="时序预览"><div class="chart-box" ref="prepChartBox"></div></el-tab-pane><el-tab-pane label="相关性热力图"><div class="chart-box" ref="prepCorrChartBox"></div></el-tab-pane><el-tab-pane label="动态段评分"><el-table :data="preprocessResult.segments" size="small" max-height="340"><el-table-column prop="start" label="起点"></el-table-column><el-table-column prop="end" label="终点"></el-table-column><el-table-column prop="len" label="长度"></el-table-column><el-table-column prop="energy" label="能量"></el-table-column><el-table-column prop="score" label="质量分"></el-table-column></el-table></el-tab-pane><el-tab-pane label="采样预览"><el-table :data="preprocessResult.preview_rows" size="small" max-height="340"><el-table-column v-for="c in Object.keys(preprocessResult.preview_rows[0]||{})" :key="c" :prop="c" :label="c" min-width="100"></el-table-column></el-table></el-tab-pane></el-tabs>
+                </template><el-empty v-else description="选择数据集并执行预处理后查看数据、时滞和质量评分" :image-size="90"></el-empty>
+              </el-card></el-col>
+            </el-row>
+          </div>
+
+          <!-- 运行任务 -->
+          <div v-if="active==='tasks'">
+            <el-card v-if="canRW" style="margin-bottom:14px">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <b>任务会话</b><el-select v-model="activeSessionId" placeholder="选择本地会话" clearable style="min-width:220px" @change="selectSession"><el-option v-for="s in sessions" :key="s.id" :value="s.id" :label="s.title+' · '+s.items.length+' 条'"></el-option></el-select>
+                <el-button size="small" @click="createSession">新建会话</el-button><el-button size="small" :disabled="!activeSessionId" @click="deleteSession">删除会话</el-button>
+                <span v-if="currentSession" style="color:#909399;font-size:12px">最近指令：{{ (currentSession.items[currentSession.items.length-1]||{}).instruction || '暂无记录' }}</span>
+              </div>
+            </el-card>
+            <div v-if="canRW" class="workspace-grid">
+              <el-card>
+                <template #header><b>Agent 分析指令</b></template>
+                <el-form label-position="top">
+                  <el-form-item label="分析数据集">
+                    <el-select v-model="taskForm.dataset_id" placeholder="选择数据集" style="width:100%" @change="onTaskDatasetChange">
+                      <el-option v-for="d in datasets" :key="d.id" :value="d.id" :label="'#' + d.id + ' ' + d.name + ' · ' + d.row_count + ' 行'"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="自然语言目标">
+                    <el-input v-model="taskForm.instruction" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="描述希望提取的数据段、处理方式与建模目标"></el-input>
+                    <el-select v-model="selectedPreset" placeholder="载入指令示例" clearable style="width:100%;margin-top:8px" @change="loadPreset">
+                      <el-option v-for="p in presets" :key="p" :value="p" :label="p"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-row :gutter="12">
+                    <el-col :span="12"><el-form-item label="模型输出 Y"><el-select v-model="taskForm.output_col" filterable style="width:100%"><el-option v-for="c in taskColumns" :key="c" :label="c" :value="c"></el-option></el-select></el-form-item></el-col>
+                    <el-col :span="12"><el-form-item label="输入变量 U"><el-select v-model="taskForm.input_cols" multiple collapse-tags filterable style="width:100%"><el-option v-for="c in taskColumns.filter(x=>x!==taskForm.output_col)" :key="c" :label="c" :value="c"></el-option></el-select></el-form-item></el-col>
+                  </el-row>
+                  <el-divider content-position="left">预处理与寻优</el-divider>
+                  <el-row :gutter="12">
+                    <el-col :span="12"><el-form-item label="异常阈值 IQR"><el-input-number v-model="taskForm.iqr_mult" :min="0.5" :max="5" :step="0.1" style="width:100%"></el-input-number></el-form-item></el-col>
+                    <el-col :span="12"><el-form-item label="动态窗口"><el-input-number v-model="taskForm.window" :min="10" :max="500" :step="10" style="width:100%"></el-input-number></el-form-item></el-col>
+                    <el-col :span="12"><el-form-item label="动态能量阈值"><el-slider v-model="taskForm.energy_ratio" :min="0.1" :max="1" :step="0.05" show-input></el-slider></el-form-item></el-col>
+                    <el-col :span="12"><el-form-item label="闭环迭代"><el-input-number v-model="taskForm.n_trials" :min="1" :max="100" style="width:100%"></el-input-number></el-form-item></el-col>
+                  </el-row>
+                  <el-collapse><el-collapse-item title="多目标寻优与工程约束" name="objective">
+                    <el-row :gutter="10"><el-col :span="8"><el-form-item label="拟合权重"><el-input-number v-model="taskForm.fit_weight" :min="0" :max="1" :step="0.1" style="width:100%"></el-input-number></el-form-item></el-col><el-col :span="8"><el-form-item label="样本权重"><el-input-number v-model="taskForm.sample_weight" :min="0" :max="1" :step="0.1" style="width:100%"></el-input-number></el-form-item></el-col><el-col :span="8"><el-form-item label="变量惩罚"><el-input-number v-model="taskForm.variable_penalty" :min="0" :max="10" :step="0.1" style="width:100%"></el-input-number></el-form-item></el-col><el-col :span="12"><el-form-item label="最少优选样本"><el-input-number v-model="taskForm.min_samples" :min="0" :max="1000000" :step="50" style="width:100%"></el-input-number></el-form-item></el-col><el-col :span="12"><el-form-item label="最多保留输入变量"><el-input-number v-model="taskForm.max_variables" :min="1" :max="20" style="width:100%"></el-input-number></el-form-item></el-col></el-row>
+                    <div style="font-size:12px;color:#909399">默认只优化拟合度；提高样本权重可偏向更长数据段，变量惩罚用于减少冗余输入。</div>
+                  </el-collapse-item></el-collapse>
+                  <el-button type="primary" :loading="submitLoading" @click="submitTask">运行 Agent 工作流</el-button>
+                  <el-divider content-position="left">批量实验</el-divider>
+                  <el-select v-model="batchDatasetIds" multiple collapse-tags filterable placeholder="选择多份数据集进行同参数对比" style="width:100%;margin-bottom:10px"><el-option v-for="d in datasets" :key="d.id" :value="d.id" :label="'#'+d.id+' '+d.name"></el-option></el-select>
+                  <el-button :loading="batchLoading" :disabled="batchDatasetIds.length<2" @click="submitBatch">批量运行 {{batchDatasetIds.length}} 个任务</el-button>
+                </el-form>
+              </el-card>
+              <el-card>
+                <template #header><div style="display:flex;justify-content:space-between"><b>执行计划</b><el-tag type="success" effect="plain">{{ taskPlan.length }} 个阶段</el-tag></div></template>
+                <div v-for="(step,i) in taskPlan" :key="step.title" class="plan-step">
+                  <el-tag size="small" effect="plain">{{ String(i+1).padStart(2,'0') }}</el-tag><b style="margin-left:10px">{{ step.title }}</b>
+                  <div style="margin:6px 0 0 42px;color:#606266;font-size:13px">{{ step.desc }}</div>
+                </div>
+                <el-divider></el-divider>
+                <div v-if="activeTask">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>当前任务</b><el-tag :type="statusType(activeTask.status)">{{ activeTask.status }}</el-tag></div>
+                  <el-progress :percentage="Math.round(activeTask.progress||0)" :status="activeTask.status==='failed'?'exception':''"></el-progress>
+                  <div style="color:#606266;margin-top:7px">{{ activeTask.current_message || activeTask.current_stage }}</div>
+                  <el-steps :active="activeStageIndex(activeTask.current_stage)" finish-status="success" simple style="margin-top:16px"><el-step title="优选"></el-step><el-step title="辨识"></el-step><el-step title="寻优"></el-step><el-step title="交付"></el-step></el-steps>
+                </div>
+                <el-empty v-else description="提交后显示实时执行进度" :image-size="70"></el-empty>
+              </el-card>
+            </div>
+
+            <el-card>
+              <template #header>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span>任务列表</span>
+                  <el-button size="small" @click="loadTasks">刷新</el-button>
+                </div>
+              </template>
+              <el-table :data="tasks" stripe>
+                <el-table-column prop="id" label="任务ID" width="150">
+                  <template #default="{ row }"><code style="font-size:11px">{{ row.id }}</code></template>
+                </el-table-column>
+                <el-table-column prop="task_type" label="类型" width="110"></el-table-column>
+                <el-table-column prop="status" label="状态" width="90">
+                  <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.status }}</el-tag></template>
+                </el-table-column>
+                <el-table-column label="进度" width="160">
+                  <template #default="{ row }">
+                    <el-progress :percentage="Math.round(row.progress || 0)" :status="row.status==='failed' ? 'exception' : ''"></el-progress>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="current_stage" label="阶段"></el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="160"></el-table-column>
+                <el-table-column label="操作" width="340">
+                  <template #default="{ row }">
+                    <el-button size="small" @click="showTask(row.id)">详情</el-button>
+                    <el-button size="small" v-if="row.status==='running' && row.current_stage==='optimize' && canRW" @click="pauseTask(row.id)">暂停</el-button>
+                    <el-button size="small" type="success" v-if="row.status==='paused' && canRW" @click="resumeTask(row.id)">恢复</el-button>
+                    <el-button size="small" type="danger" v-if="row.status==='running'||row.status==='pending'" @click="cancelTask(row.id)">取消</el-button>
+                    <el-button size="small" type="success" v-if="row.status==='completed' && canRW" @click="applyParams(row.id)">应用参数</el-button>
+                    <el-button size="small" type="primary" v-if="row.status==='completed'" @click="exportCsv(row.id)">CSV</el-button>
+                    <el-button size="small" v-if="row.status==='completed'" @click="exportParams(row.id)">参数 JSON</el-button>
+                    <el-button size="small" type="warning" v-if="row.status==='completed' && canRW" @click="exportPdf(row.id)">PDF</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+          </div>
+
+          <div v-if="active==='reports'">
+            <el-card>
+              <template #header><div style="display:flex;justify-content:space-between;align-items:center"><b>分析报告与交付</b><el-button size="small" @click="loadTasks">刷新</el-button></div></template>
+              <el-select v-model="reportDatasetFilter" clearable placeholder="筛选数据集" style="width:240px;margin-bottom:12px"><el-option v-for="d in datasets" :key="d.id" :value="d.id" :label="d.name"></el-option></el-select>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><el-button type="primary" size="small" :disabled="selectedCompareIds.length<2" @click="compareExperiments">对比所选实验 {{selectedCompareIds.length}}</el-button><span style="font-size:12px;color:#909399">最多选择 8 组已完成实验</span></div>
+              <el-table :data="reportTasks" stripe empty-text="完成的分析报告会显示在这里" @selection-change="onCompareSelectionChange">
+                <el-table-column type="selection" width="45"></el-table-column><el-table-column prop="id" label="任务编号" width="100"></el-table-column><el-table-column label="实验快照" min-width="180"><template #default="{row}">{{(row.result&&row.result.snapshot&&row.result.snapshot.label)||('实验 #'+row.id)}}</template></el-table-column><el-table-column prop="dataset_id" label="数据集" width="90"></el-table-column>
+                <el-table-column prop="created_at" label="运行时间" width="170"></el-table-column><el-table-column prop="best_fit" label="最优 FIT"><template #default="{row}">{{ row.best_fit==null?'-':Number(row.best_fit).toFixed(2)+'%' }}</template></el-table-column>
+                <el-table-column prop="current_stage" label="结果状态"></el-table-column><el-table-column label="操作" width="400"><template #default="{row}"><el-button size="small" @click="showTask(row.id)">报告预览</el-button><el-button size="small" v-if="canRW" @click="editSnapshot(row)">标注</el-button><el-button size="small" type="primary" @click="exportCsv(row.id)">数据 CSV</el-button><el-button size="small" @click="exportParams(row.id)">参数 JSON</el-button><el-button size="small" type="warning" v-if="canRW" @click="exportPdf(row.id)">报告 PDF</el-button></template></el-table-column>
+              </el-table>
+              <el-card v-if="comparisonRows.length" style="margin-top:14px"><template #header><b>实验指标横向对比</b></template><el-table :data="comparisonRows" size="small"><el-table-column prop="label" label="实验快照" min-width="180"></el-table-column><el-table-column prop="dataset_id" label="数据集"></el-table-column><el-table-column prop="best_fit" label="FIT %"></el-table-column><el-table-column prop="r2" label="R²"></el-table-column><el-table-column prop="mse" label="MSE"></el-table-column><el-table-column prop="aic" label="AIC"></el-table-column><el-table-column prop="rows" label="样本数"></el-table-column><el-table-column prop="variables" label="输入变量数"></el-table-column></el-table></el-card>
+            </el-card>
+          </div>
+
+          <div v-if="active==='users' && user.role==='admin'">
+            <el-card>
+              <template #header><div style="display:flex;justify-content:space-between;align-items:center"><b>用户与角色管理</b><el-button size="small" @click="loadUsers">刷新</el-button></div></template>
+              <el-form :inline="true" :model="userForm" @submit.prevent>
+                <el-form-item label="账号"><el-input v-model="userForm.username" placeholder="字母、数字、点、下划线或短横线"></el-input></el-form-item>
+                <el-form-item label="初始密码"><el-input v-model="userForm.password" type="password" show-password></el-input></el-form-item>
+                <el-form-item label="显示名称"><el-input v-model="userForm.display_name"></el-input></el-form-item>
+                <el-form-item label="角色"><el-select v-model="userForm.role"><el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value"></el-option></el-select></el-form-item>
+                <el-form-item label="知识库上传权限"><el-switch v-model="userForm.can_upload"></el-switch></el-form-item>
+                <el-form-item><el-button type="primary" @click="createUser">创建账号</el-button></el-form-item>
+              </el-form>
+              <el-table :data="users" stripe><el-table-column prop="username" label="账号" width="180"></el-table-column><el-table-column prop="display_name" label="显示名称" width="180"></el-table-column><el-table-column label="角色" width="220"><template #default="{row}"><el-select v-model="row.role" :disabled="row.username===user.username" @change="saveUserRole(row)"><el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value"></el-option></el-select></template></el-table-column><el-table-column label="知识库上传" width="120"><template #default="{row}"><el-switch v-model="row.can_upload" :active-value="1" :inactive-value="0" :disabled="row.role==='admin'" @change="saveUserUpload(row)"></el-switch></template></el-table-column><el-table-column prop="created_at" label="创建时间"></el-table-column><el-table-column label="操作" width="150"><template #default="{row}"><el-button text type="primary" @click="resetUserPassword(row)">重置密码</el-button></template></el-table-column></el-table>
+            </el-card>
+          </div>
+
+          <div v-if="active==='settings'">
+            <el-row :gutter="16">
+              <el-col :span="24"><el-card><template #header><div style="display:flex;justify-content:space-between"><b>预处理参数模板</b><div><el-button size="small" @click="exportTemplates">导出 JSON</el-button><el-button size="small" @click="$refs.templateFile.click()">导入 JSON</el-button><input ref="templateFile" type="file" accept=".json,application/json" style="display:none" @change="importTemplates"></div></div></template><el-table :data="parameterTemplates" size="small"><el-table-column prop="name" label="工艺模板"></el-table-column><el-table-column prop="iqr_mult" label="IQR"></el-table-column><el-table-column prop="window" label="窗口"></el-table-column><el-table-column prop="energy_ratio" label="能量阈值"></el-table-column><el-table-column prop="top_n" label="优选段数"></el-table-column><el-table-column prop="updated_by" label="维护人"></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button text type="primary" @click="applyTemplate(row)">应用</el-button><el-button text type="danger" @click="removeTemplate(row.id)">删除</el-button></template></el-table-column></el-table><el-button style="margin-top:12px" @click="saveTemplate">保存当前参数为模板</el-button></el-card></el-col>
+              <el-col :span="24" style="margin-top:16px"><el-card><template #header><b>Agent 工作流模板</b></template><el-table :data="workflowTemplates" size="small"><el-table-column prop="name" label="模板名称"></el-table-column><el-table-column prop="instruction" label="自然语言指令" min-width="320"></el-table-column><el-table-column prop="updated_by" label="维护人" width="110"></el-table-column><el-table-column label="操作" width="150"><template #default="{row}"><el-button text type="primary" @click="applyWorkflowTemplate(row)">应用</el-button><el-button text type="danger" @click="removeWorkflowTemplate(row.id)">删除</el-button></template></el-table-column></el-table><el-button style="margin-top:12px" @click="saveWorkflowTemplate">保存当前工作流</el-button></el-card></el-col>
+              <el-col :span="24" style="margin-top:16px"><el-card><template #header><div style="display:flex;justify-content:space-between"><b>全局算法与运行设置</b><el-button v-if="user.role==='admin'" type="primary" size="small" @click="saveSystemSettings">保存全局设置</el-button></div></template><el-alert v-if="user.role!=='admin'" title="只读查看全局设置，只有管理员可以修改" type="info" :closable="false" style="margin-bottom:12px"></el-alert><el-row :gutter="16"><el-col :xs="24" :md="8"><el-form-item label="默认迭代数"><el-input-number v-model="systemSettings.default_n_trials" :min="1" :max="systemSettings.max_n_trials" :disabled="user.role!=='admin'"></el-input-number></el-form-item></el-col><el-col :xs="24" :md="8"><el-form-item label="最大迭代数"><el-input-number v-model="systemSettings.max_n_trials" :min="1" :max="200" :disabled="user.role!=='admin'"></el-input-number></el-form-item></el-col><el-col :xs="24" :md="8"><el-form-item label="收敛早停阈值"><el-input-number v-model="systemSettings.early_stop_tol" :min="0" :max="10" :step="0.1" :disabled="user.role!=='admin'"></el-input-number></el-form-item></el-col><el-col :xs="24" :md="8"><el-form-item label="最大时滞搜索"><el-input-number v-model="systemSettings.max_lag" :min="0" :max="200" :disabled="user.role!=='admin'"></el-input-number></el-form-item></el-col><el-col :xs="24" :md="8"><el-form-item label="共线性识别阈值"><el-slider v-model="systemSettings.corr_threshold" :min="0.5" :max="0.999" :step="0.005" :disabled="user.role!=='admin'"></el-slider></el-form-item></el-col><el-col :xs="24" :md="8"><el-form-item label="动态能量默认阈值"><el-slider v-model="systemSettings.dynamic_energy_ratio" :min="0.1" :max="1" :step="0.05" :disabled="user.role!=='admin'"></el-slider></el-form-item></el-col></el-row><el-descriptions :column="2" border><el-descriptions-item label="Agent 解析">{{serviceState.agent}}</el-descriptions-item><el-descriptions-item label="LLM 接入">{{systemSettings.llm_configured?'已配置':'本地规则模式'}}</el-descriptions-item><el-descriptions-item label="工作流引擎">LangGraph</el-descriptions-item><el-descriptions-item label="辨识算法">ARX + 时序交叉验证</el-descriptions-item><el-descriptions-item label="当前角色">{{roleLabel(user.role)}}</el-descriptions-item></el-descriptions></el-card></el-col>
+            </el-row>
+          </div>
+
+          <!-- 审计 -->
+          <div v-if="active==='audit'">
+            <el-card>
+              <template #header><div style="display:flex;justify-content:space-between;align-items:center"><span>审计日志（闭环留痕）</span><div><el-input v-model="auditOperator" placeholder="按操作人筛选" clearable size="small" style="width:180px" @keyup.enter="loadAudits"></el-input><el-button size="small" @click="loadAudits">查询</el-button></div></div></template>
+              <el-table :data="audits" stripe>
+                <el-table-column prop="id" label="ID" width="60"></el-table-column>
+                <el-table-column prop="action" label="动作" width="150"></el-table-column>
+                <el-table-column prop="resource" label="资源" width="170"></el-table-column>
+                <el-table-column prop="operator" label="操作者" width="110"></el-table-column>
+                <el-table-column prop="detail" label="详情"></el-table-column>
+                <el-table-column prop="ip" label="IP" width="130"></el-table-column>
+                <el-table-column prop="created_at" label="时间" width="160"></el-table-column>
+              </el-table>
+            </el-card>
+          </div>
+        </div>
+      </el-main>
+    </el-container>
+  </el-container>
+
+  <!-- 数据集概览弹窗 -->
+  <el-dialog v-model="overviewVisible" :title="'数据集概览 #' + overview.dataset_id" width="960px">
+    <div v-if="overview.name" style="margin-bottom:8px">
+      <el-tag>{{ overview.name }}</el-tag>
+      <el-tag type="success" style="margin-left:6px">{{ overview.rows }} 行</el-tag>
+    </div>
+    <el-card v-if="overview.quality" shadow="never" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px"><div><b>数据质量综合评分</b><div style="font-size:12px;color:#909399;margin-top:5px">完整度 {{overview.quality.components.completeness}} · 异常韧性 {{overview.quality.components.outlier_resilience}} · 动态信息 {{overview.quality.components.dynamic_content}} · 变量独立性 {{overview.quality.components.independence}}</div></div><el-progress type="dashboard" :percentage="overview.quality.score" :color="overview.quality.score>=75?'#67c23a':overview.quality.score>=50?'#e6a23c':'#f56c6c'"></el-progress></div><el-alert v-for="warning in overview.quality.warnings" :key="warning" :title="warning" type="warning" :closable="false" style="margin-top:6px"></el-alert></el-card>
+    <el-tabs>
+      <el-tab-pane label="原始 vs 清洗">
+        <div class="chart-box" ref="lineChartBox"></div>
+      </el-tab-pane>
+      <el-tab-pane label="原始采样预览">
+        <el-table :data="overview.preview_rows||[]" size="small" max-height="420" stripe>
+          <el-table-column v-for="c in overview.columns||[]" :key="c" :prop="c" :label="c" min-width="110" show-overflow-tooltip></el-table-column>
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane label="相关性热力图">
+        <div class="chart-box" ref="corrChartBox"></div>
+      </el-tab-pane>
+    </el-tabs>
+  </el-dialog>
+
+  <!-- 任务详情弹窗 -->
+  <el-dialog v-model="taskVisible" :title="'任务 ' + taskDetail.id" width="1000px">
+    <template v-if="taskDetail.result">
+      <div v-if="!taskDetail.result.error" class="metric-grid">
+        <div class="metric"><strong>{{ Number(((taskDetail.result.arx||{}).fit)||0).toFixed(1) }}%</strong><span>ARX 辨识 FIT</span></div>
+        <div class="metric"><strong>{{ Number((((taskDetail.result.model_eval||{}).best||{}).r2)||0).toFixed(3) }}</strong><span>时序验证 R²</span></div>
+        <div class="metric"><strong>{{ (taskDetail.result.data||{}).rows || 0 }}</strong><span>优选样本数</span></div>
+        <div class="metric"><strong>{{ Number(((taskDetail.result.optimize||{}).best_fit)||0).toFixed(1) }}%</strong><span>闭环最优 FIT</span></div>
+      </div>
+      <el-alert v-if="taskDetail.result.error" :title="taskDetail.result.error" type="error" :closable="false"></el-alert>
+      <el-tabs @tab-click="onTaskTabClick">
+        <el-tab-pane label="报告文本">
+          <pre style="white-space:pre-wrap;background:#f0f2f5;padding:12px;border-radius:4px">{{ taskDetail.result.report }}</pre>
+        </el-tab-pane>
+        <el-tab-pane label="模型与辨识">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="最优模型">{{ ((taskDetail.result.model_eval||{}).best||{}).model || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="R²">{{ ((taskDetail.result.model_eval||{}).best||{}).r2 }}</el-descriptions-item>
+            <el-descriptions-item label="ARX 阶数">
+              {{ taskDetail.result.arx ? 'ARX(na=' + taskDetail.result.arx.na + ', nb=' + taskDetail.result.arx.nb + ')' : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="ARX FIT">
+              {{ taskDetail.result.arx ? Math.round(taskDetail.result.arx.fit*100)/100 + '%' : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="时序CV R²均值">{{ ((taskDetail.result.cv||{}).r2_mean) }}</el-descriptions-item>
+            <el-descriptions-item label="寻优 FIT">{{ ((taskDetail.result.optimize||{}).best_fit) }}</el-descriptions-item>
+          </el-descriptions>
+          <h4>最优预处理策略与补偿</h4>
+          <el-descriptions :column="3" border size="small">
+            <el-descriptions-item v-for="(v,k) in ((taskDetail.result.optimize||{}).best_params||{})" :key="k" :label="k">{{ typeof v==='number' ? Number(v).toPrecision(4) : v }}</el-descriptions-item>
+            <el-descriptions-item label="时滞补偿">{{ JSON.stringify((taskDetail.result.data||{}).lags||{}) }}</el-descriptions-item>
+          </el-descriptions>
+          <h4>动态段质量排序</h4>
+          <el-table :data="taskDetail.result.segments||[]" size="small" max-height="230">
+            <el-table-column prop="start" label="起点"></el-table-column><el-table-column prop="end" label="终点"></el-table-column>
+            <el-table-column prop="len" label="长度"></el-table-column><el-table-column prop="energy" label="动态能量"></el-table-column>
+            <el-table-column prop="score" label="质量分"><template #default="{row}"><el-progress :percentage="Math.min(100,Math.round(row.score))" :text-inside="true" :stroke-width="18"></el-progress></template></el-table-column>
+          </el-table>
+          <h4>ARX 阶数候选</h4>
+          <el-table :data="taskDetail.result.arx_candidates||[]" size="small" max-height="220">
+            <el-table-column label="阶数"><template #default="{row}">ARX({{row.na}}, {{row.nb}})</template></el-table-column>
+            <el-table-column prop="fit" label="FIT %"></el-table-column><el-table-column prop="r2" label="R²"></el-table-column>
+            <el-table-column prop="aic" label="AIC"></el-table-column><el-table-column prop="dw" label="DW"></el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="闭环寻优" name="optimize">
+          <div class="metric-grid">
+            <div class="metric"><strong>{{ ((taskDetail.result.optimize||{}).n_iter)||0 }}</strong><span>实际迭代轮数</span></div>
+            <div class="metric"><strong>{{ Number(((taskDetail.result.optimize||{}).best_fit)||0).toFixed(2) }}%</strong><span>当前最优 FIT</span></div>
+            <div class="metric"><strong>{{ Number(((taskDetail.result.optimize||{}).elapsed)||0).toFixed(1) }}s</strong><span>寻优耗时</span></div>
+            <div class="metric"><strong>{{ (taskDetail.result.optimize||{}).stopped_by_earlystop ? '已收敛' : ((taskDetail.result.optimize||{}).stopped_by_cancel ? '已取消' : '完成') }}</strong><span>停止状态</span></div>
+          </div>
+          <div class="chart-box" ref="optimizeChartBox"></div>
+          <el-table :data="taskDetail.result.optimize ? taskDetail.result.optimize.history : []" size="small" max-height="320" stripe>
+            <el-table-column type="index" label="轮次" width="70"></el-table-column>
+            <el-table-column prop="fit" label="辨识 FIT %" width="120"><template #default="{row}">{{ Number(row.fit).toFixed(3) }}</template></el-table-column>
+            <el-table-column label="预处理参数"><template #default="{row}">{{ JSON.stringify(row.params) }}</template></el-table-column>
+          </el-table>
+          <el-empty v-if="!(taskDetail.result.optimize||{}).history?.length" description="该任务未执行闭环寻优" :image-size="70"></el-empty>
+        </el-tab-pane>
+        <el-tab-pane label="图表">
+          <div v-for="f in taskDetail.result.figures" :key="f">
+            <img class="figure-img" :src="'/figures/' + figName(f)" :alt="figName(f)">
+          </div>
+          <div v-if="!(taskDetail.result.figures||[]).length" style="color:#909399">无图表</div>
+        </el-tab-pane>
+        <el-tab-pane label="日志">
+          <div v-for="(l,idx) in taskDetail.logs" :key="idx" style="font-size:12px">
+            <span style="color:#909399">{{ l.time }}</span> {{ l.msg }}
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </template>
+    <div v-else style="color:#909399">任务尚未完成</div>
+  </el-dialog>
+
+  <el-button v-if="token" class="assistant-fab" type="primary" circle size="large" aria-label="打开导航助手" @click="assistantOpen=true">AI</el-button>
+  <el-drawer v-if="token" v-model="assistantOpen" direction="rtl" size="380px" :with-header="false" :append-to-body="true">
+    <div style="height:100%;display:flex;flex-direction:column">
+      <div style="padding:16px;border-bottom:1px solid #ebeef5;display:flex;justify-content:space-between;align-items:center">
+        <div><b>系统导航助手</b><div style="font-size:12px;color:#909399;margin-top:4px">{{ roleLabel(user.role) }} · {{ systemSettings.llm_configured?'DeepSeek':'本地答疑' }}</div></div>
+        <el-button text @click="assistantOpen=false">关闭</el-button>
+      </div>
+      <el-alert v-if="user.role==='viewer'" title="演示访客模式：请使用演示数据，不能上传私有文件或导出数据" type="warning" :closable="false" style="margin:10px 12px 0"></el-alert>
+      <div ref="assistantScroll" class="assistant-messages">
+        <div v-if="!assistantMessages.length" class="assistant-bubble assistant">{{ assistantWelcome }}</div>
+        <div v-for="(m,i) in assistantMessages" :key="i" class="assistant-bubble" :class="m.role">
+          <div>{{ m.content }}</div>
+          <el-button v-if="m.action?.type==='open_pipeline'" size="small" type="primary" plain style="margin-top:8px" @click="handleAssistantAction(m.action)">转到业务Agent并复核</el-button>
+          <el-button v-if="m.action?.type==='open_report'" size="small" type="primary" plain style="margin-top:8px" @click="handleAssistantAction(m.action)">查看任务报告</el-button>
+          <el-button v-if="m.action?.type==='load_demo'" size="small" type="primary" plain style="margin-top:8px" @click="handleAssistantAction(m.action)">加载精馏塔仿真数据</el-button>
+        </div>
+        <div v-if="assistantLoading" class="assistant-bubble assistant">正在整理建议…</div>
+      </div>
+      <div v-if="!assistantMessages.length" class="assistant-actions"><el-button v-for="q in assistantQuickActions" :key="q" size="small" @click="askAssistant(q)">{{q}}</el-button></div>
+      <div style="padding:12px;border-top:1px solid #ebeef5;display:flex;gap:8px;align-items:flex-end">
+        <el-input v-model="assistantInput" type="textarea" :rows="2" maxlength="1000" show-word-limit placeholder="询问功能、指标或操作建议" @keydown.enter.exact.prevent="sendAssistant"></el-input>
+        <el-button type="primary" :loading="assistantLoading" @click="sendAssistant">发送</el-button>
+      </div>
+    </div>
+  </el-drawer>
+</div>
+
+<script>
+const { createApp } = Vue;
+const { ElMessage, ElMessageBox } = ElementPlus;
+const app = createApp({
+  data() {
+    return {
+      token: 'a14-static-demo-token',
+      user: { username: 'admin', display_name: '演示管理员', role: 'admin' },
+      loginForm: { username: 'admin', password: 'admin123' },
+      loginLoading: false,
+      active: 'dashboard',
+      stats: {},
+      datasets: [],
+      genForm: { n_samples: 3000, steady_segments: 3, step_amp: 8, noise_std: 0.06, delay_1: 5, delay_2: 12 },
+      genLoading: false,
+      uploadList: [],
+      uploadFiles: [],
+      uploadResult: [],
+      uploadLoading: false,
+      // ---- 企业知识库 ----
+      kbMe: {}, kbStatus: {}, kbDocs: [], kbLoading: false, kbKeyword: '',
+      kbRoles: [], kbUsers: [], kbOrphans: [], kbRescanning: false,
+      kbUploadList: [], kbUploading: false, kbProgress: 0, kbProgressStatus: '',
+      kbChunkSize: 512, kbChunkOverlap: 80, kbFileDesc: '',
+      kbPerm: 'public', kbPermRoles: [], kbPermUsers: [],
+      kbChunkVisible: false, kbChunkLoading: false, kbChunks: [], kbChunkDoc: {},
+      kbPermVisible: false, kbPermDoc: {}, kbPermEdit: 'public', kbPermEditRoles: [], kbPermEditUsers: [],
+      taskForm: { instruction: '清洗数据并剔除异常，提取高信噪比动态段，处理时滞与共线性后闭环寻优得到最优建模数据', n_trials: 10, dataset_id: null, input_cols: [], output_col: '', iqr_mult: 1.5, window: 40, energy_ratio: 0.5, top_n: 3, time_col: 'Time', max_lag:30, corr_threshold:0.95, early_stop_tol:0.5, fit_weight:1, sample_weight:0, variable_penalty:0, min_samples:0, max_variables:20 },
+      selectedPreset: '', taskColumns: [], activeTaskId: '',
+      sessions: JSON.parse(localStorage.getItem('a14_sessions') || '[]'), activeSessionId: '',
+      batchDatasetIds: [], batchLoading: false, preprocessLoading: false, preprocessResult: null,
+      reportDatasetFilter: null,
+      systemSettings: {default_n_trials:10,max_n_trials:100,early_stop_tol:0.5,max_lag:30,corr_threshold:0.95,dynamic_energy_ratio:0.5,llm_configured:false},
+      workflowTemplates: [], auditOperator: '',
+      selectedCompareIds:[], comparisonRows:[],
+      users: [], userForm:{username:'',password:'',display_name:'',role:'engineer',can_upload:false},
+      roleOptions:[{value:'engineer',label:'工艺工程师'},{value:'algorithm',label:'算法工程师'},{value:'admin',label:'系统管理员'},{value:'viewer',label:'只读查看'}],
+      assistantOpen:false, assistantInput:'', assistantLoading:false, assistantMessages:[],
+      presets: [
+        '清洗数据并剔除异常，提取高信噪比动态段，处理时滞与共线性后闭环寻优得到最优建模数据',
+        '提取1号塔高信噪比的动态数据，处理时滞与共线性后，通过闭环寻优找出最佳模型数据',
+        '先做数据清洗与对齐，再进行时滞解耦与共线性处理，最后评估模型并生成报告',
+        '仅执行数据规整与高信噪比筛选，不做寻优',
+      ],
+      submitLoading: false,
+      tasks: [],
+      audits: [],
+      overviewVisible: false,
+      overview: {},
+      taskVisible: false,
+      taskDetail: {},
+      ws: null,
+      wsPool: {},
+      parameterTemplates: JSON.parse(localStorage.getItem('agent_parameter_templates') || '[]'),
+    };
+  },
+  computed: {
+    canRW() { return ['engineer', 'algorithm', 'admin'].includes(this.user.role); },
+    kbEmbName() { return (this.kbStatus.embedding_model || '-').split('/').pop(); },
+    kbOrphanNames() { return this.kbOrphans.map(f => f.file_name).join('、'); },
+    serviceState() { return {label: this.token ? '在线' : '未连接', type: this.token ? 'success' : 'info', agent: '规则解析可用；配置 DeepSeek Key 后启用 LLM'}; },
+    activeTask() { return this.tasks.find(t => String(t.id) === String(this.activeTaskId)) || this.tasks.find(t => ['pending','running'].includes(t.status)); },
+    currentSession() { return this.sessions.find(s => s.id === this.activeSessionId) || null; },
+    reportTasks() { return this.tasks.filter(t => t.status==='completed' && (!this.reportDatasetFilter || String(t.dataset_id)===String(this.reportDatasetFilter))); },
+    assistantWelcome() { return this.user.role==='admin' ? '你好，我是系统运维助手，可协助理解用户角色、审计、系统设置与 DeepSeek 接入。' : this.user.role==='algorithm' ? '你好，我是实施专家助手，可协助解读参数、寻优收敛和模型指标。' : this.user.role==='viewer' ? '欢迎体验演示系统。我可以介绍模块、术语和演示流程。' : '你好，我是工艺操作助手，可协助查看数据质量、解释指标并引导运行业务流程。'; },
+    assistantQuickActions() { return this.user.role==='admin' ? ['说明角色权限','如何检查 DeepSeek 接入','如何查询审计日志'] : this.user.role==='algorithm' ? ['解释共线性阈值','如何判断寻优收敛','如何对比模型结果'] : this.user.role==='viewer' ? ['加载精馏塔仿真数据','系统可以做什么','解释闭环寻优'] : ['解释数据质量指标','如何提取动态段','如何运行闭环寻优']; },
+    taskPlan() {
+      const text = this.taskForm.instruction || '';
+      const has = (words) => words.some(w => text.toLowerCase().includes(w.toLowerCase()));
+      const steps = [];
+      if (has(['清洗','异常','对齐','规整'])) steps.push({title:'数据规整与异常清洗',desc:`按时间列 ${this.taskForm.time_col || 'Time'} 对齐采样，并按 IQR ${this.taskForm.iqr_mult} 检测异常`});
+      if (has(['动态','高信噪比','筛选','优选'])) steps.push({title:'动态片段优选',desc:`多变量动态能量窗口 ${this.taskForm.window}，阈值 ${this.taskForm.energy_ratio}，按质量分排序`});
+      if (has(['时滞','共线性','解耦','相关'])) steps.push({title:'时滞与共线性解耦',desc:'估计输入领先量并补偿，识别强相关冗余变量'});
+      steps.push({title:'系统辨识与验证',desc:`输入 ${this.taskForm.input_cols.join(', ') || '自动选择'} → 输出 ${this.taskForm.output_col || '自动选择'}；ARX 阶数扫描与时序交叉验证`});
+      if (has(['寻优','优化','闭环','最佳'])) steps.push({title:'闭环反馈寻优',desc:`以模型 FIT 为目标迭代 ${this.taskForm.n_trials} 次，回调调整预处理参数`});
+      steps.push({title:'报告与数据交付',desc:'生成工程结论、质量图表，并提供优选数据 CSV 与 PDF 报告'});
+      return steps;
+    },
+      statCards() {
+      const running = this.tasks.filter(t => ['running','pending'].includes(t.status)).length;
+      const completed = this.tasks.filter(t => t.status === 'completed').length;
+      const fits = this.tasks.filter(t => t.best_fit != null).map(t => Number(t.best_fit));
+      return [
+        { label: '数据集总数', value: this.stats.datasets ?? this.datasets.length, to: 'datasets' },
+        { label: '运行中任务', value: running, to: 'tasks' },
+        { label: '已完成任务', value: completed, to: 'reports' },
+        { label: '历史最佳 FIT', value: fits.length ? Math.max(...fits).toFixed(1)+'%' : '-', to: 'reports' },
+      ];
+    },
+  },
+  methods: {
+    nav(to) { this.active = to; },
+    roleLabel(role) { return ({admin:'系统管理员',engineer:'工艺工程师',algorithm:'算法工程师',viewer:'只读查看'})[role] || '用户'; },
+    async saveTemplate() {
+      try {
+        const { value } = await ElMessageBox.prompt('为当前预处理参数命名', '保存参数模板', {inputValue:'新工艺模板', confirmButtonText:'保存'});
+        this.parameterTemplates = await this.api('/config/parameter-templates', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:value, iqr_mult:this.taskForm.iqr_mult, window:this.taskForm.window, energy_ratio:this.taskForm.energy_ratio, top_n:this.taskForm.top_n})});
+        ElMessage.success('模板已保存');
+      } catch (e) {}
+    },
+    async loadWorkflowTemplates() { try { this.workflowTemplates=await this.api('/config/workflow-templates'); } catch(e) {} },
+    async saveWorkflowTemplate() {
+      try {
+        const { value } = await ElMessageBox.prompt('为当前自然语言任务流程命名', '保存工作流模板', {inputValue:'新工作流模板', confirmButtonText:'保存'});
+        this.workflowTemplates=await this.api('/config/workflow-templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:value,instruction:this.taskForm.instruction,parameters:{n_trials:this.taskForm.n_trials,iqr_mult:this.taskForm.iqr_mult,window:this.taskForm.window,energy_ratio:this.taskForm.energy_ratio,top_n:this.taskForm.top_n,max_lag:this.taskForm.max_lag,corr_threshold:this.taskForm.corr_threshold,fit_weight:this.taskForm.fit_weight,sample_weight:this.taskForm.sample_weight,variable_penalty:this.taskForm.variable_penalty,min_samples:this.taskForm.min_samples,max_variables:this.taskForm.max_variables}})});
+        ElMessage.success('工作流模板已保存');
+      } catch(e) {}
+    },
+    onCompareSelectionChange(rows) { this.selectedCompareIds=rows.slice(0,8).map(r=>String(r.id)); },
+    async compareExperiments() { if(this.selectedCompareIds.length<2) return; try { const query=this.selectedCompareIds.map(id=>'task_ids='+encodeURIComponent(id)).join('&'); this.comparisonRows=await this.api('/experiments/compare?'+query); } catch(e) {} },
+    async editSnapshot(row) { try { const prior=(row.result&&row.result.snapshot)||{}; const label=await ElMessageBox.prompt('为本次实验设置可识别的快照名称','实验标注',{inputValue:prior.label||('实验 #'+row.id),inputValidator:v=>!!v&&v.trim().length<=100||'名称不能为空且不超过 100 字'}); const note=await ElMessageBox.prompt('补充工况、变量选择或现场备注','实验备注',{inputValue:prior.note||'',inputType:'textarea'}); await this.api('/tasks/'+row.id+'/snapshot',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label.value,note:note.value})}); await this.loadTasks(); ElMessage.success('实验快照已更新'); } catch(e) {} },
+    applyWorkflowTemplate(row) { this.taskForm.instruction=row.instruction; Object.assign(this.taskForm,row.parameters||{}); ElMessage.success('工作流指令与参数已应用'); },
+    async removeWorkflowTemplate(id) { try { await ElMessageBox.confirm('删除此工作流模板？','确认',{type:'warning'}); await this.api('/config/workflow-templates/'+id,{method:'DELETE'}); await this.loadWorkflowTemplates(); } catch(e) {} },
+    applyTemplate(row) { Object.assign(this.taskForm, {iqr_mult:row.iqr_mult, window:row.window, energy_ratio:row.energy_ratio, top_n:row.top_n}); ElMessage.success('参数已应用到 Agent 工作台'); },
+    async removeTemplate(id) { try { await ElMessageBox.confirm('删除此团队参数模板？','确认',{type:'warning'}); await this.api('/config/parameter-templates/'+id,{method:'DELETE'}); await this.loadTemplates(); } catch(e) {} },
+    async exportTemplates() { try { const res=await fetch('/api/config/parameter-templates/export',{headers:{Authorization:'Bearer '+this.token}}); if(!res.ok) throw new Error(); const url=URL.createObjectURL(await res.blob()); const a=document.createElement('a'); a.href=url; a.download='a14_parameter_templates.json'; a.click(); URL.revokeObjectURL(url); } catch(e) { ElMessage.error('模板导出失败'); } },
+    async importTemplates(event) { const file=event.target.files && event.target.files[0]; if(!file) return; try { const parsed=JSON.parse(await file.text()); const templates=Array.isArray(parsed)?parsed:parsed.templates; this.parameterTemplates=await this.api('/config/parameter-templates/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({templates})}); ElMessage.success('模板导入完成'); } catch(e) { ElMessage.error('文件格式错误或模板导入失败'); } finally { event.target.value=''; } },
+    createSession() { const id=String(Date.now()); const s={id,title:'新会话 '+new Date().toLocaleTimeString(),items:[]}; this.sessions.unshift(s); this.activeSessionId=id; this.persistSessions(); },
+    selectSession(id) { const s=this.sessions.find(x=>x.id===id); const last=s && s.items[s.items.length-1]; if(last && last.instruction) this.taskForm.instruction=last.instruction; if(last && last.task_id) this.activeTaskId=last.task_id; },
+    async deleteSession() { if(!this.activeSessionId) return; try { await ElMessageBox.confirm('删除该会话记录？','确认',{type:'warning'}); this.sessions=this.sessions.filter(s=>s.id!==this.activeSessionId); this.activeSessionId=''; this.persistSessions(); } catch(e) {} },
+    persistSessions() { localStorage.setItem('a14_sessions',JSON.stringify(this.sessions)); },
+    addSessionItem(instruction,taskId,datasetName) { if(!this.activeSessionId) this.createSession(); const s=this.sessions.find(x=>x.id===this.activeSessionId); if(!s) return; s.title=datasetName+' · '+instruction.slice(0,20); s.items.push({instruction,task_id:String(taskId),at:new Date().toISOString()}); this.persistSessions(); },
+    async api(path, opts = {}) {
+      const headers = Object.assign({}, opts.headers || {});
+      if (this.token) headers['Authorization'] = 'Bearer ' + this.token;
+      const res = await fetch('/api' + path, Object.assign({}, opts, { headers }));
+      if (res.status === 401) { this.logout(); throw new Error('未登录或登录过期'); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { const msg = data.detail || '请求失败'; ElMessage.error(msg); throw new Error(msg); }
+      return data;
+    },
+    async doLogin() {
+      this.loginLoading = true;
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.loginForm),
+        });
+        const data = await res.json();
+        if (!res.ok) { ElMessage.error(data.detail || '登录失败'); return; }
+        this.token = data.token; this.user = data.user;
+        localStorage.setItem('agent_token', data.token);
+        localStorage.setItem('agent_user', JSON.stringify(data.user));
+        ElMessage.success('登录成功');
+        this.loadAll();
+      } finally { this.loginLoading = false; }
+    },
+    logout() {
+      this.token = ''; this.user = {};
+      localStorage.removeItem('agent_token'); localStorage.removeItem('agent_user');
+      this.assistantMessages=[]; this.assistantInput=''; this.assistantOpen=false;
+      Object.values(this.wsPool).forEach(ws => ws.close()); this.wsPool = {}; this.ws = null;
+    },
+    askAssistant(question) { this.assistantInput=question; this.sendAssistant(question); },
+    async sendAssistant(forcedText) {
+      const message=(typeof forcedText==='string'?forcedText:this.assistantInput).trim();
+      if(!message||this.assistantLoading) return;
+      const history=this.assistantMessages.slice(-8).map(m=>({role:m.role,content:m.content}));
+      this.assistantMessages.push({role:'user',content:message}); this.assistantInput=''; this.assistantLoading=true;
+      try {
+        const result=await this.api('/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,history,page:this.active,dataset_id:this.taskForm.dataset_id||null,task_id:this.activeTaskId||null})});
+        this.assistantMessages.push({role:'assistant',content:result.reply,action:result.action});
+      } catch(e) {
+        this.assistantMessages.push({role:'assistant',content:'助手暂时无法连接。可先使用页面中的业务Agent工作台，或检查 DeepSeek 服务配置。'});
+      } finally { this.assistantLoading=false; this.$nextTick(()=>{const el=this.$refs.assistantScroll;if(el)el.scrollTop=el.scrollHeight;}); }
+    },
+    handleAssistantAction(action) {
+      if(action.type==='open_pipeline') { this.taskForm.instruction=action.instruction; this.nav('tasks'); this.assistantOpen=false; if(!this.taskForm.dataset_id) ElMessage.info('请在业务Agent工作台选择要处理的数据集，再复核参数并提交'); }
+      else if(action.type==='open_report') { this.nav('reports'); this.assistantOpen=false; this.showTask(action.task_id); }
+      else if(action.type==='load_demo') this.loadDemoDataset();
+    },
+    async loadDemoDataset() { try { const result=await this.api('/demo/dataset',{method:'POST'}); await this.loadDatasets(); this.assistantOpen=false; ElMessage.success('演示数据已就绪：'+result.name); await this.showOverview(result.dataset_id); } catch(e) {} },
+    notifyAssistant(content,action=null) { if(!['engineer','algorithm'].includes(this.user.role)) return; this.assistantMessages.push({role:'assistant',content,action}); },
+    async loadAll() {
+      this.loadStats(); this.loadDatasets(); this.loadTasks();
+      if (this.user.role === 'admin') this.loadAudits();
+      if (this.user.role === 'admin') this.loadUsers();
+      if (['admin','algorithm'].includes(this.user.role)) { this.loadTemplates(); this.loadWorkflowTemplates(); }
+      this.loadSystemSettings();
+    },
+    async loadStats() {
+      try { this.stats = await this.api('/dashboard/stats'); } catch (e) {}
+    },
+    // ---- 企业知识库（文档上传 / 权限） ----
+    async kbFetch(path, opts = {}) {
+      const headers = Object.assign({}, opts.headers || {});
+      if (this.token) headers['Authorization'] = 'Bearer ' + this.token;
+      const res = await fetch('/rag-api' + path, Object.assign({}, opts, { headers }));
+      if (res.status === 401) { this.logout(); throw new Error('登录已过期，请重新登录'); }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || ('知识库请求失败 HTTP ' + res.status));
+      return data;
+    },
+    async loadKb() {
+      this.kbLoading = true;
+      try {
+        this.kbMe = await this.kbFetch('/me');
+        this.kbStatus = await this.kbFetch('/status');
+        this.kbRoles = await this.kbFetch('/roles');
+        this.kbUsers = await this.kbFetch('/users');
+        await this.loadKbDocs();
+        const o = await this.kbFetch('/orphans');
+        this.kbOrphans = o.files || [];
+      } catch (e) {
+        ElMessage.error(e.message || '知识库加载失败（若是刚更新代码，请重启后端服务）');
+      } finally { this.kbLoading = false; }
+    },
+    async loadKbDocs() {
+      try {
+        const q = this.kbKeyword ? '?keyword=' + encodeURIComponent(this.kbKeyword) : '';
+        const data = await this.kbFetch('/documents' + q);
+        this.kbDocs = data.documents || [];
+      } catch (e) { this.kbDocs = []; }
+    },
+    kbParams(row) {
+      const cs = (row && row.chunk_size) || 512;
+      const co = (row && row.chunk_overlap !== null && row.chunk_overlap !== undefined) ? row.chunk_overlap : 80;
+      return cs + ' / ' + co;
+    },
+    kbFmtSize(n) {
+      n = Number(n || 0);
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1048576).toFixed(2) + ' MB';
+    },
+    onKbFileChange(file, fileList) { this.kbUploadList = fileList || []; },
+    kbPermTargets() {
+      if (this.kbPerm === 'role') return this.kbPermRoles;
+      if (this.kbPerm === 'user') return this.kbPermUsers;
+      return [];
+    },
+    doKbUpload() {
+      if (!this.kbUploadList.length) { ElMessage.warning('请先选择文件'); return; }
+      if (this.kbPerm !== 'public' && !this.kbPermTargets().length) { ElMessage.warning('请选择可见范围对象'); return; }
+      const fd = new FormData();
+      this.kbUploadList.forEach(f => { if (f.raw) fd.append('files', f.raw); });
+      fd.append('chunk_size', String(this.kbChunkSize || 512));
+      fd.append('chunk_overlap', String(this.kbChunkOverlap || 80));
+      fd.append('permission_type', this.kbPerm);
+      fd.append('permission_targets', this.kbPermTargets().join(','));
+      fd.append('file_desc', this.kbFileDesc || '');
+      this.kbUploading = true; this.kbProgress = 0; this.kbProgressStatus = '';
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/rag-api/upload');
+      if (this.token) xhr.setRequestHeader('Authorization', 'Bearer ' + this.token);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) this.kbProgress = Math.round(e.loaded / e.total * 92);
+      };
+      xhr.onload = async () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+        if (xhr.status === 401) { this.logout(); this.kbUploading = false; return; }
+        if (xhr.status >= 400) {
+          ElMessage.error(data.detail || ('上传失败 HTTP ' + xhr.status));
+          this.kbProgressStatus = 'exception';
+        } else {
+          this.kbProgress = 100; this.kbProgressStatus = 'success';
+          const errs = (data.errors || []).map(x => x.filename + '：' + x.error);
+          if (errs.length) ElMessage.warning('部分文件失败：' + errs.join('；'));
+          if (data.count) ElMessage.success('成功入库 ' + data.count + ' 个文档（切分 ' + data.chunk_size + ' / ' + data.chunk_overlap + '）');
+          this.kbUploadList = [];
+          await this.loadKb();
+        }
+        this.kbUploading = false;
+        setTimeout(() => { this.kbProgress = 0; }, 1200);
+      };
+      xhr.onerror = () => {
+        ElMessage.error('网络错误，上传失败');
+        this.kbUploading = false; this.kbProgressStatus = 'exception';
+      };
+      xhr.send(fd);
+    },
+    async doKbRescan() {
+      this.kbRescanning = true;
+      try {
+        const r = await this.kbFetch('/rescan', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chunk_size: this.kbChunkSize || 512, chunk_overlap: this.kbChunkOverlap || 80,
+                                 permission_type: 'public', permission_targets: [] }),
+        });
+        ElMessage.success('恢复完成：成功 ' + r.count + ' 个' + (r.errors.length ? '，失败 ' + r.errors.length + ' 个' : ''));
+        await this.loadKb();
+      } catch (e) { ElMessage.error(e.message); }
+      finally { this.kbRescanning = false; }
+    },
+    async showKbChunks(row) {
+      this.kbChunkDoc = row; this.kbChunks = []; this.kbChunkLoading = true; this.kbChunkVisible = true;
+      try {
+        const data = await this.kbFetch('/documents/' + row.doc_id + '/chunks');
+        this.kbChunks = data.chunks || [];
+      } catch (e) { ElMessage.error(e.message); }
+      finally { this.kbChunkLoading = false; }
+    },
+    openKbPerm(row) {
+      this.kbPermDoc = row;
+      this.kbPermEdit = 'public'; this.kbPermEditRoles = []; this.kbPermEditUsers = [];
+      (row.permissions || []).forEach(p => {
+        if (p.type === 'role') { this.kbPermEdit = 'role'; this.kbPermEditRoles = String(p.value || '').split(',').filter(Boolean); }
+        else if (p.type === 'user') { this.kbPermEdit = 'user'; this.kbPermEditUsers = String(p.value || '').split(',').filter(Boolean); }
+      });
+      this.kbPermVisible = true;
+    },
+    async saveKbPerm() {
+      const targets = this.kbPermEdit === 'role' ? this.kbPermEditRoles
+                    : this.kbPermEdit === 'user' ? this.kbPermEditUsers : [];
+      if (this.kbPermEdit !== 'public' && !targets.length) { ElMessage.warning('请选择可见范围对象'); return; }
+      try {
+        await this.kbFetch('/documents/' + this.kbPermDoc.doc_id + '/permissions', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ permissions: [{ type: this.kbPermEdit, value: targets.join(',') }] }),
+        });
+        ElMessage.success('可见范围已更新');
+        this.kbPermVisible = false;
+        await this.loadKbDocs();
+      } catch (e) { ElMessage.error(e.message); }
+    },
+    async delKbDoc(row) {
+      try {
+        await ElMessageBox.confirm('确认删除《' + row.file_name + '》？将同时删除向量与磁盘文件，不可恢复。', '提示', { type: 'warning' });
+      } catch (e) { return; }
+      try {
+        await this.kbFetch('/documents/' + row.doc_id, { method: 'DELETE' });
+        ElMessage.success('已删除');
+        await this.loadKb();
+      } catch (e) { ElMessage.error(e.message); }
+    },
+    openKbChat() { window.open('/chat', '_blank'); },
+    async saveUserUpload(row) {
+      try {
+        await this.api('/admin/users/' + row.id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ can_upload: !!row.can_upload }),
+        });
+        ElMessage.success('知识库上传权限已更新');
+      } catch (e) { await this.loadUsers(); }
+    },
+    async loadDatasets() {
+      try { this.datasets = await this.api('/datasets'); } catch (e) {}
+    },
+    async loadTasks() {
+      try { this.tasks = await this.api('/tasks'); } catch (e) {}
+      this.tasks.forEach(t => {
+        if (t.status === 'running' || t.status === 'pending') this.openWs(t.id);
+      });
+    },
+    async loadAudits() {
+      try { this.audits = await this.api('/audit?operator='+encodeURIComponent(this.auditOperator)); } catch (e) {}
+    },
+    async loadUsers() { try { this.users=await this.api('/admin/users'); } catch(e) {} },
+    async createUser() {
+      try { await this.api('/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.userForm)}); this.userForm={username:'',password:'',display_name:'',role:'engineer',can_upload:false}; await this.loadUsers(); ElMessage.success('账号已创建'); }
+      catch(e) {}
+    },
+    async saveUserRole(row) { try { await this.api('/admin/users/'+row.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:row.role})}); ElMessage.success('角色已更新'); } catch(e) { await this.loadUsers(); } },
+    async resetUserPassword(row) { try { const {value}=await ElMessageBox.prompt('输入新密码（至少 8 位）','重置密码',{inputType:'password',inputValidator:v=>v&&v.length>=8||'密码至少需要 8 位'}); await this.api('/admin/users/'+row.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:value})}); ElMessage.success('密码已重置'); } catch(e) {} },
+    async loadTemplates() { try { this.parameterTemplates = await this.api('/config/parameter-templates'); } catch (e) {} },
+    async loadSystemSettings() { try { const s=await this.api('/config/system'); this.systemSettings={...this.systemSettings,...s}; this.taskForm.n_trials=s.default_n_trials; this.taskForm.max_lag=s.max_lag; this.taskForm.corr_threshold=s.corr_threshold; this.taskForm.energy_ratio=s.dynamic_energy_ratio; this.taskForm.early_stop_tol=s.early_stop_tol; } catch(e) {} },
+    async saveSystemSettings() { try { this.systemSettings=await this.api('/config/system',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.systemSettings)}); await this.loadSystemSettings(); ElMessage.success('全局算法参数已保存'); } catch(e) {} },
+    statusType(s) {
+      return { pending: 'info', running: '', paused: 'warning', completed: 'success', failed: 'danger', canceled: 'warning' }[s] || 'info';
+    },
+    activeStageIndex(stage='') { return stage.includes('data') || stage.includes('优选') ? 0 : stage.includes('model') || stage.includes('辨识') ? 1 : stage.includes('optimize') || stage.includes('寻优') ? 2 : stage.includes('done') || stage.includes('完成') ? 4 : 0; },
+    loadPreset(value) { if (value) this.taskForm.instruction = value; },
+    async onTaskDatasetChange(id) {
+      const ds = this.datasets.find(x => x.id === id); if (!ds) return;
+      try {
+        const ov = await this.api('/data/overview?dataset_id=' + id);
+        this.taskColumns = (ov.numeric_columns || []).filter(c => c !== 'Time' && c !== ov.time_col);
+        this.taskForm.time_col = ov.time_col || 'Time';
+        if (!this.taskForm.output_col || !this.taskColumns.includes(this.taskForm.output_col)) this.taskForm.output_col = this.taskColumns[this.taskColumns.length - 1] || '';
+      this.taskForm.input_cols = this.taskColumns.filter(c => c !== this.taskForm.output_col).slice(0, Math.min(3, this.taskColumns.length - 1));
+      } catch (e) { this.taskColumns = []; }
+    },
+    async doGenerate() {
+      this.genLoading = true;
+      try {
+        const data = await this.api('/data/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.genForm),
+        });
+        ElMessage.success(`生成数据集 #${data.dataset_id}（${data.rows} 行）`);
+        this.loadDatasets();
+      } finally { this.genLoading = false; }
+    },
+    onFileChange(file, fileList) {
+      this.uploadFiles = fileList.map(f => f.raw).filter(Boolean); this.uploadList = fileList;
+      this.uploadResult = [];
+    },
+    async doUpload() {
+      if (!this.uploadFiles.length) { ElMessage.warning('请先选择文件'); return; }
+      this.uploadLoading = true;
+      try {
+        const results = [];
+        for (const file of this.uploadFiles) {
+          const fd = new FormData(); fd.append('file', file);
+          const res = await fetch('/api/data/upload', {method:'POST', headers:{'Authorization':'Bearer '+this.token}, body:fd});
+          const data = await res.json().catch(()=>({}));
+          results.push(res.ok ? data : {name:file.name,error:data.detail||'上传失败'});
+        }
+        this.uploadResult = results;
+        this.uploadList = []; this.uploadFiles = [];
+        this.loadDatasets();
+        ElMessage.success(`上传完成：${results.filter(x=>x.dataset_id).length}/${results.length} 个文件成功`);
+      } finally { this.uploadLoading = false; }
+    },
+    async showOverview(id) {
+      try {
+        this.overview = await this.api('/data/overview?dataset_id=' + id);
+        this.overviewVisible = true;
+        this.$nextTick(() => { this.renderLineChart(); this.renderCorrChart(); });
+      } catch (e) {}
+    },
+    renderLineChart() {
+      const el = this.$refs.lineChartBox; if (!el) return;
+      const ov = this.overview;
+      const series = [];
+      Object.keys(ov.raw_preview || {}).forEach(c => {
+        series.push({ name: c + ' (原始)', type: 'line', showSymbol: false, data: ov.raw_preview[c], lineStyle: { width: 1 } });
+        if (ov.cleaned_preview && ov.cleaned_preview[c]) {
+          series.push({ name: c + ' (清洗)', type: 'line', showSymbol: false, data: ov.cleaned_preview[c], lineStyle: { width: 1, type: 'dashed' } });
+        }
+      });
+      const chart = echarts.init(el);
+      chart.setOption({
+        title: { text: '原始 vs 清洗（前 500 点）', left: 'center', textStyle: { fontSize: 14 } },
+        tooltip: { trigger: 'axis' },
+        legend: { top: 28, type: 'scroll' },
+        xAxis: { type: 'category' },
+        yAxis: { type: 'value' },
+        dataZoom: [{ type: 'slider', start: 0, end: 100 }],
+        series,
+      });
+    },
+    renderCorrChart() {
+      const el = this.$refs.corrChartBox; if (!el) return;
+      const ov = this.overview;
+      const cols = Object.keys(ov.corr || {});
+      const data = [];
+      cols.forEach((r, i) => cols.forEach((c, j) => data.push([j, i, ov.corr[r][c]])));
+      const chart = echarts.init(el);
+      chart.setOption({
+        title: { text: '数值变量相关性', left: 'center', textStyle: { fontSize: 14 } },
+        tooltip: { position: 'top', formatter: p => cols[p.value[1]] + ' × ' + cols[p.value[0]] + '：' + (p.value[2] == null ? '-' : p.value[2]) },
+        grid: { left: 80, right: 30, top: 50, bottom: 60 },
+        xAxis: { type: 'category', data: cols, splitArea: { show: true } },
+        yAxis: { type: 'category', data: cols, splitArea: { show: true } },
+        visualMap: { min: -1, max: 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#d73027', '#fff', '#4575b4'] } },
+        series: [{ type: 'heatmap', data, label: { show: true, fontSize: 10 } }],
+      });
+    },
+    async copyDs(id) {
+      try { await this.api('/datasets/' + id + '/copy', { method: 'POST' }); ElMessage.success('已复制'); this.loadDatasets(); } catch (e) {}
+    },
+    async delDs(id) {
+      try {
+        await ElMessageBox.confirm('确认删除数据集 #' + id + ' 的登记关系？（磁盘文件保留）', '提示', { type: 'warning' });
+        await this.api('/datasets/' + id, { method: 'DELETE' });
+        ElMessage.success('已删除'); this.loadDatasets();
+      } catch (e) {}
+    },
+    async submitTask() {
+      if (!this.taskForm.instruction) { ElMessage.warning('请输入用户指令'); return; }
+      if (!this.taskForm.dataset_id) { ElMessage.warning('请先选择数据集'); return; }
+      if (!this.taskForm.output_col || !this.taskForm.input_cols.length) { ElMessage.warning('请选择至少一个输入变量和一个输出变量'); return; }
+      try { const quality=await this.api('/data/overview?dataset_id='+this.taskForm.dataset_id); if(quality.quality?.warnings?.length) await ElMessageBox.confirm(quality.quality.warnings.join('；')+'。仍要继续运行吗？','运行前风险提示',{type:'warning',confirmButtonText:'继续运行',cancelButtonText:'返回调整'}); } catch(e) { return; }
+      this.submitLoading = true;
+      try {
+        const data = await this.api('/run-optimize', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.taskForm),
+        });
+        ElMessage.success('任务已提交：' + data.task_id);
+        this.activeTaskId = data.task_id;
+        const ds=this.datasets.find(x=>String(x.id)===String(this.taskForm.dataset_id)); this.addSessionItem(this.taskForm.instruction,data.task_id,ds?ds.name:'数据集');
+        this.loadTasks();
+        this.openWs(data.task_id);
+      } finally { this.submitLoading = false; }
+    },
+    async submitBatch() {
+      if(this.batchDatasetIds.length<2) return;
+      this.batchLoading=true;
+      try { const body={...this.taskForm,dataset_ids:this.batchDatasetIds}; delete body.dataset_id;
+        const result=await this.api('/run-optimize/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        ElMessage.success(`已创建 ${result.count} 个批量任务`); this.activeTaskId=result.tasks[0]?.task_id||''; this.loadTasks(); result.tasks.forEach(t=>this.openWs(t.task_id));
+        this.addSessionItem(this.taskForm.instruction,result.tasks[0]?.task_id||'批量任务','批量实验');
+      } catch(e) {} finally { this.batchLoading=false; }
+    },
+    async doPreprocess() {
+      if(!this.taskForm.dataset_id || !this.taskForm.output_col || !this.taskForm.input_cols.length) { ElMessage.warning('请选择源数据集、输入变量和输出变量'); return; }
+      this.preprocessLoading=true;
+      try { this.preprocessResult=await this.api('/data/preprocess',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataset_id:this.taskForm.dataset_id,input_cols:this.taskForm.input_cols,output_col:this.taskForm.output_col,time_col:this.taskForm.time_col,iqr_mult:this.taskForm.iqr_mult,window:this.taskForm.window,energy_ratio:this.taskForm.energy_ratio,top_n:this.taskForm.top_n,max_lag:this.taskForm.max_lag,corr_threshold:this.taskForm.corr_threshold})}); this.loadDatasets(); ElMessage.success('预处理完成，已保存为新数据集'); this.$nextTick(()=>{this.renderPreparedChart();this.renderPreparedCorrChart();}); } catch(e) {} finally { this.preprocessLoading=false; }
+    },
+    continueWithPrepared() { this.taskForm.dataset_id=this.preprocessResult.dataset_id; this.taskForm.input_cols=this.preprocessResult.input_cols.map(c=>c.replace(/_lag$/,'')); this.taskForm.output_col=this.preprocessResult.output_col; this.onTaskDatasetChange(this.preprocessResult.dataset_id); this.taskForm.instruction='基于已预处理数据执行模型辨识、评价并闭环寻优'; this.nav('tasks'); },
+    renderPreparedChart() { const el=this.$refs.prepChartBox, rows=(this.preprocessResult||{}).preview_rows||[]; if(!el||!rows.length) return; const cols=this.preprocessResult.input_cols.concat([this.preprocessResult.output_col]).filter(c=>rows[0][c]!==undefined); const chart=echarts.getInstanceByDom(el)||echarts.init(el); chart.setOption({tooltip:{trigger:'axis'},legend:{data:cols},grid:{left:55,right:20,top:30,bottom:45},xAxis:{type:'category',data:rows.map((_,i)=>i)},yAxis:{type:'value',scale:true},dataZoom:[{type:'inside'},{type:'slider'}],series:cols.map((c,i)=>({name:c,type:'line',showSymbol:false,lineStyle:{width:1},data:rows.map(r=>r[c]),yAxisIndex:0}))}); },
+    renderPreparedCorrChart() { const el=this.$refs.prepCorrChartBox, matrix=(this.preprocessResult||{}).corr||{}, cols=Object.keys(matrix); if(!el||!cols.length) return; const data=[]; cols.forEach((a,i)=>cols.forEach((b,j)=>data.push([j,i,matrix[a][b]]))); const chart=echarts.getInstanceByDom(el)||echarts.init(el); chart.setOption({tooltip:{position:'top',formatter:p=>`${cols[p.value[1]]} × ${cols[p.value[0]]}: ${p.value[2]??'-'}`},grid:{left:90,right:25,top:25,bottom:65},xAxis:{type:'category',data:cols,splitArea:{show:true}},yAxis:{type:'category',data:cols,splitArea:{show:true}},visualMap:{min:-1,max:1,calculable:true,orient:'horizontal',left:'center',bottom:0,inRange:{color:['#d73027','#fff','#4575b4']}},series:[{type:'heatmap',data,label:{show:true}}]}); },
+    openWs(taskId) {
+      this.activeTaskId = taskId;
+      if (this.wsPool[String(taskId)] && this.wsPool[String(taskId)].readyState < 2) return;
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws/tasks/${taskId}?token=${encodeURIComponent(this.token)}`);
+      this.wsPool[String(taskId)] = ws;
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'progress') {
+          const t = this.tasks.find(x => String(x.id) === String(taskId));
+          if (t) { t.progress = msg.progress; t.current_stage = msg.stage; t.current_message = msg.msg || ''; }
+        } else if (msg.type === 'done' || msg.type === 'failed') {
+          ws.close(); this.loadTasks();
+          if (msg.type === 'done') { ElMessage.success('任务完成'); this.notifyAssistant('闭环任务已完成，可以查看报告、优选数据集和最优参数。',{type:'open_report',task_id:String(taskId)}); }
+          else { ElMessage.error('任务失败'); this.notifyAssistant('任务执行失败：'+(msg.error||'请打开任务详情查看日志并检查数据列、缺失值和动态样本量。')); }
+        }
+      };
+      ws.onerror = () => ws.close();
+      this.ws = ws;
+    },
+    async cancelTask(id) {
+      try { await this.api('/tasks/' + id + '/cancel', { method: 'POST' }); ElMessage.success('取消请求已受理'); this.loadTasks(); } catch (e) {}
+    },
+    async pauseTask(id) { try { await this.api('/tasks/'+id+'/pause',{method:'POST'}); ElMessage.info('将在当前迭代完成后暂停'); await this.loadTasks(); } catch(e) {} },
+    async resumeTask(id) { try { await this.api('/tasks/'+id+'/resume',{method:'POST'}); ElMessage.success('寻优已恢复'); await this.loadTasks(); } catch(e) {} },
+    async applyParams(id) {
+      try { await this.api('/tasks/' + id + '/apply-params', { method: 'POST' }); ElMessage.success('寻优参数已写回数据集'); } catch (e) {}
+    },
+    exportCsv(id) {
+      fetch('/api/tasks/' + id + '/export', {headers:{'Authorization':'Bearer '+this.token}}).then(async res => {
+        if (!res.ok) { const data=await res.json().catch(()=>({})); ElMessage.error(data.detail||'CSV 导出失败'); return; }
+        const url=URL.createObjectURL(await res.blob()); const a=document.createElement('a'); a.href=url; a.download='prepared_'+id+'.csv'; a.click(); URL.revokeObjectURL(url);
+      }).catch(()=>ElMessage.error('CSV 导出失败'));
+    },
+    async exportParams(id) { try { const res=await fetch('/api/tasks/'+id+'/export-params',{headers:{Authorization:'Bearer '+this.token}}); if(!res.ok) { ElMessage.error('参数导出失败'); return; } const url=URL.createObjectURL(await res.blob()); const a=document.createElement('a'); a.href=url; a.download='best_params_'+id+'.json'; a.click(); URL.revokeObjectURL(url); } catch(e) { ElMessage.error('参数导出失败'); } },
+    async exportPdf(id) {
+      try {
+        const res = await fetch('/api/tasks/' + id + '/export-pdf', { headers: { 'Authorization': 'Bearer ' + this.token } });
+        if (!res.ok) { ElMessage.error('PDF 生成失败'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'report_' + id + '.pdf'; a.click();
+        URL.revokeObjectURL(url);
+        ElMessage.success('PDF 报告已生成');
+      } catch (e) {}
+    },
+    figName(p) {
+      if (!p) return '';
+      return String(p).split(/[\\/]/).pop();
+    },
+    async showTask(id) {
+      try {
+        this.taskDetail = await this.api('/tasks/' + id);
+        this.taskVisible = true;
+      } catch (e) {}
+    },
+    onTaskTabClick(tab) { if (tab.paneName === 'optimize') this.$nextTick(this.renderOptimizeChart); },
+    renderOptimizeChart() {
+      const el = this.$refs.optimizeChartBox;
+      const history = (((this.taskDetail||{}).result||{}).optimize||{}).history || [];
+      if (!el || !history.length) return;
+      const fits = history.map(x => Number(x.fit));
+      let best = -Infinity;
+      const bestLine = fits.map(x => { best = Math.max(best, x); return Number(best.toFixed(3)); });
+      const chart = echarts.getInstanceByDom(el) || echarts.init(el);
+      chart.setOption({
+        title:{text:'辨识 FIT 闭环收敛',left:'left',textStyle:{fontSize:14}},
+        tooltip:{trigger:'axis'}, legend:{data:['本轮 FIT','历史最优 FIT'],right:8,top:0},
+        grid:{left:54,right:24,top:42,bottom:38},
+        xAxis:{type:'category',name:'轮次',data:fits.map((_,i)=>i+1)},
+        yAxis:{type:'value',name:'FIT (%)',scale:true},
+        series:[{name:'本轮 FIT',type:'line',data:fits,symbolSize:6,lineStyle:{width:2},itemStyle:{color:'#168b8b'}},
+                {name:'历史最优 FIT',type:'line',data:bestLine,symbol:'none',step:'end',lineStyle:{width:2,type:'dashed',color:'#e59a35'}}]
+      });
+    },
+  },
+  watch: {
+    active(v) { if (v === 'kb' && this.token) this.loadKb(); },
+  },
+  mounted() {
+    if (this.token) this.loadAll();
+    setInterval(() => { if (this.token && (this.active === 'tasks' || this.active === 'dashboard')) this.loadTasks(); }, 5000);
+  },
+});
+app.use(ElementPlus);
+app.mount('#app');
+</script>
+</body>
+</html>
+
+
