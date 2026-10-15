@@ -58,7 +58,7 @@
       <div style="font-size:16px;font-weight:bold">智能体 · 数据优选与闭环寻优</div>
       <div>
         <el-tag size="small" style="margin-right:8px">{{ user.role }} · {{ user.display_name || user.username }}</el-tag>
-        <el-button size="small" @click="logout">退出</el-button>
+        <el-tag size="small" type="success">访客免登录</el-tag>
       </div>
     </el-header>
     <el-container>
@@ -1207,5 +1207,6 @@ app.mount('#app');
 </script>
 </body>
 </html>
+
 
 

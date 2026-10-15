@@ -1,5 +1,6 @@
 /* Static showcase adapter: the original Vue/Element Plus front end is unchanged apart from local paths and a demo user. No requests leave the page. */
 (function () {
+  window.A14_STATIC_DEMO = true;
   const user = { username: 'admin', display_name: '演示管理员', role: 'admin' };
   const datasets = [
     {id: 8, name: '精馏塔仿真数据', source: '仿真生成', row_count: 3000, column_count: 8, time_span: '2026-10-14 10:00 ~ 10:49', created_at: '2026-10-14 16:30'},
@@ -76,3 +77,4 @@
   const nativeOpen=window.open.bind(window);
   window.open=function(url,...args){if(url==='/chat'){window.alert('静态展示模式未连接知识问答服务。');return null;}return nativeOpen(url,...args);};
 })();
+
