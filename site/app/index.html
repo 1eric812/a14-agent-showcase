@@ -1184,6 +1184,32 @@
       .lg-beam { display:none; }
     }
     html[data-motion="off"] .lg-wave, html[data-motion="off"] .lg-beam, html[data-motion="off"] .lg-grid { display:none; }
+
+    /* ================= 账号开通申请：登录页表单 + 管理员审核 ================= */
+    .lc-field-2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+    .lc-result { margin-top:4px; }
+    .lc-result-rows { display:flex; flex-direction:column; gap:1px; margin:4px 0 18px; border:1px solid rgba(0,229,255,.12); border-radius:6px; overflow:hidden; background:rgba(8,12,24,.3); }
+    .lc-result-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; background:rgba(255,255,255,.012); }
+    .lc-result-row + .lc-result-row { border-top:1px solid rgba(0,229,255,.08); }
+    .lc-result-row span { color:var(--lg-dim); font-size:11px; letter-spacing:.6px; }
+    .lc-result-row strong { color:#dff4ff; font:700 12px/1.4 Consolas,"Microsoft YaHei",monospace; letter-spacing:.4px; }
+    .lc-result-row strong.lc-warn { color:#ffd08a; }
+    .lc-note { margin:0 0 16px; color:var(--lg-dim); font-size:11px; line-height:1.7; }
+    .lc-query { margin-top:14px; padding:14px 14px 16px; border:1px solid rgba(0,229,255,.14); border-radius:8px; background:rgba(8,12,24,.34); animation:lc-panel-in .34s cubic-bezier(.2,.8,.25,1) both; }
+    .lc-query .lc-field { margin-bottom:12px; }
+    .lc-query-result { display:flex; flex-direction:column; gap:3px; margin-top:12px; padding:10px 12px; border:1px solid rgba(0,229,255,.2); border-radius:6px; background:rgba(0,229,255,.06); }
+    .lc-query-result strong { color:#cdf3ff; font-size:12px; letter-spacing:.8px; }
+    .lc-query-result span { color:#93a7b5; font-size:11px; line-height:1.6; }
+    .lc-query-result.st-pending { border-color:rgba(255,196,110,.34); background:rgba(255,196,110,.07); }
+    .lc-query-result.st-pending strong { color:#ffd08a; }
+    .lc-query-result.st-approved { border-color:rgba(0,229,255,.36); }
+    .lc-query-result.st-approved strong { color:#9df0c8; }
+    .lc-query-result.st-rejected { border-color:rgba(255,110,110,.34); background:rgba(255,86,86,.08); }
+    .lc-query-result.st-rejected strong { color:#ffb4b4; }
+    .lc-query-result.st-none { border-color:rgba(150,170,190,.22); background:rgba(150,170,190,.05); }
+    .apply-review-card .apply-badge { display:inline-grid; min-width:18px; height:18px; margin-left:8px; padding:0 5px; place-items:center; border-radius:9px; background:color-mix(in srgb,var(--brand) 90%,#000); color:#fff; font:700 11px/1 Inter,Consolas,monospace; vertical-align:1px; }
+    .apply-review-card .apply-hint { margin-left:10px; color:var(--muted); font-size:11px; font-weight:400; }
+    @media (max-width:520px) { .lc-field-2 { grid-template-columns:1fr; } .apply-review-card .apply-hint { display:none; } }
   </style>
   <script src="./static-demo-adapter.js"></script>
 </head>
@@ -1339,31 +1365,88 @@
 
         <template v-else>
           <h1 class="lc-title">申请开通</h1>
-          <p class="lc-sub">提交开通申请，由管理员在「用户与角色」中审核并开通账号</p>
+          <p class="lc-sub">提交后进入管理员待审队列，可在下方自助查询进度</p>
           <div class="lc-divider" aria-hidden="true"></div>
-          <form class="lc-form" @submit.prevent="loginSubmitApply">
+
+          <form v-if="!loginApplyResult" class="lc-form" @submit.prevent="loginApplySubmit">
             <label class="lc-field">
               <span class="lc-label">姓名</span>
-              <el-input v-model="loginApply.name" placeholder="请输入姓名"></el-input>
+              <el-input v-model="loginApply.name" placeholder="请输入真实姓名" maxlength="40"></el-input>
               <span class="lc-fieldscan" aria-hidden="true"></span><span class="lc-line" aria-hidden="true"></span><span class="lc-line-glow" aria-hidden="true"></span>
             </label>
-            <label class="lc-field">
-              <span class="lc-label">期望账号</span>
-              <el-input v-model="loginApply.username" placeholder="请输入期望账号"></el-input>
-              <span class="lc-fieldscan" aria-hidden="true"></span><span class="lc-line" aria-hidden="true"></span><span class="lc-line-glow" aria-hidden="true"></span>
-            </label>
+            <div class="lc-field-2">
+              <label class="lc-field">
+                <span class="lc-label">期望账号</span>
+                <el-input v-model="loginApply.username" placeholder="字母开头 3-20 位" maxlength="20"></el-input>
+                <span class="lc-fieldscan" aria-hidden="true"></span><span class="lc-line" aria-hidden="true"></span><span class="lc-line-glow" aria-hidden="true"></span>
+              </label>
+              <label class="lc-field">
+                <span class="lc-label">联系方式</span>
+                <el-input v-model="loginApply.contact" placeholder="手机 / 邮箱" maxlength="60"></el-input>
+                <span class="lc-fieldscan" aria-hidden="true"></span><span class="lc-line" aria-hidden="true"></span><span class="lc-line-glow" aria-hidden="true"></span>
+              </label>
+            </div>
             <label class="lc-field">
               <span class="lc-label">岗位角色</span>
               <el-select v-model="loginApply.role" style="width:100%">
-                <el-option label="工艺工程师" value="engineer"></el-option>
-                <el-option label="算法工程师" value="algorithm"></el-option>
-                <el-option label="只读访客" value="viewer"></el-option>
+                <el-option label="工艺工程师 · 可跑业务流程" value="engineer"></el-option>
+                <el-option label="算法工程师 · 可调参寻优" value="algorithm"></el-option>
+                <el-option label="只读访客 · 仅查看演示" value="viewer"></el-option>
               </el-select>
               <span class="lc-line" aria-hidden="true"></span><span class="lc-line-glow" aria-hidden="true"></span>
             </label>
-            <p v-if="loginApplyDone" class="lc-alert ok">开通申请已提交。请联系管理员在「用户与角色」中开通该账号。</p>
-            <button type="submit" class="lc-submit"><span>提交开通申请</span></button>
+            <label class="lc-field">
+              <span class="lc-label">申请说明</span>
+              <el-input v-model="loginApply.note" placeholder="用途说明（选填）" maxlength="200"></el-input>
+              <span class="lc-fieldscan" aria-hidden="true"></span><span class="lc-line" aria-hidden="true"></span><span class="lc-line-glow" aria-hidden="true"></span>
+            </label>
+            <p v-if="loginApplyError" class="lc-alert" role="alert">{{ loginApplyError }}</p>
+            <button type="submit" class="lc-submit" :disabled="loginApplyLoading">
+              <span v-if="loginApplyLoading" class="lc-spin" aria-hidden="true"></span>
+              <span>{{ loginApplyLoading ? '正在提交…' : '提交开通申请' }}</span>
+            </button>
           </form>
+
+          <div v-else class="lc-result">
+            <p class="lc-alert ok">申请已提交，等待管理员审核。</p>
+            <div class="lc-result-rows">
+              <div class="lc-result-row"><span>申请单号</span><strong>{{ loginApplyResult.application_id }}</strong></div>
+              <div class="lc-result-row"><span>申请账号</span><strong>{{ loginApplyResult.username || loginApply.username }}</strong></div>
+              <div class="lc-result-row"><span>岗位角色</span><strong>{{ applyRoleLabel(loginApplyResult.role || loginApply.role) }}</strong></div>
+              <div class="lc-result-row"><span>提交时间</span><strong>{{ loginApplyResult.created_at }}</strong></div>
+              <div class="lc-result-row"><span>当前状态</span><strong class="lc-warn">待审核</strong></div>
+            </div>
+            <p class="lc-note">审核通过后，用申请的账号 + 管理员告知的初始密码登录；首次登录会要求你立即修改密码。</p>
+            <div class="lc-dialog-foot">
+              <button type="button" class="lc-submit ghost" @click="loginQueryOpen=true"><span>查询进度</span></button>
+              <button type="button" class="lc-submit" @click="loginApplyReset"><span>再填一份</span></button>
+            </div>
+          </div>
+
+          <p v-if="!loginApplyResult" class="lc-foot"><button type="button" class="lc-link" @click="loginQueryOpen=!loginQueryOpen">{{ loginQueryOpen ? '收起进度查询' : '已提交过？查询申请进度' }}</button></p>
+
+          <div v-if="loginQueryOpen" class="lc-query">
+            <div class="lc-field-2">
+              <label class="lc-field">
+                <span class="lc-label">账号</span>
+                <el-input v-model="loginQuery.username" placeholder="申请时的账号"></el-input>
+                <span class="lc-line" aria-hidden="true"></span>
+              </label>
+              <label class="lc-field">
+                <span class="lc-label">姓名</span>
+                <el-input v-model="loginQuery.name" placeholder="申请时的姓名"></el-input>
+                <span class="lc-line" aria-hidden="true"></span>
+              </label>
+            </div>
+            <button type="button" class="lc-submit ghost" @click="loginQuerySubmit"><span>查询进度</span></button>
+            <div v-if="loginQueryResult" class="lc-query-result" :class="'st-' + loginQueryResult.status">
+              <strong>{{ loginQueryStatusLabel }}</strong>
+              <span>{{ loginQueryResult.message }}</span>
+              <span v-if="loginQueryResult.reject_reason">驳回原因：{{ loginQueryResult.reject_reason }}</span>
+              <span v-if="loginQueryResult.reviewed_at">处理：{{ loginQueryResult.reviewed_at }} · {{ loginQueryResult.reviewed_by }}</span>
+            </div>
+          </div>
+
           <p class="lc-foot">已有账号？<button type="button" class="lc-link" @click="loginSwitch('login')">返回登录</button></p>
         </template>
       </div>
@@ -2096,6 +2179,49 @@
           </div>
 
           <div v-if="active==='users' && user.role==='admin'">
+            <el-card class="apply-review-card">
+              <template #header>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                  <b>账号开通申请<span v-if="applicationsPending" class="apply-badge">{{ applicationsPending }}</span><small class="apply-hint">来自登录页「申请开通」，通过后自动建号</small></b>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <el-button-group>
+                      <el-button size="small" :type="applyFilter==='pending'?'primary':''" @click="applyFilter='pending';loadApplications()">待审</el-button>
+                      <el-button size="small" :type="applyFilter==='approved'?'primary':''" @click="applyFilter='approved';loadApplications()">已通过</el-button>
+                      <el-button size="small" :type="applyFilter==='rejected'?'primary':''" @click="applyFilter='rejected';loadApplications()">已驳回</el-button>
+                      <el-button size="small" :type="applyFilter===''?'primary':''" @click="applyFilter='';loadApplications()">全部</el-button>
+                    </el-button-group>
+                    <el-button size="small" @click="loadApplications">刷新</el-button>
+                  </div>
+                </div>
+              </template>
+              <el-empty v-if="!applications.length && !applicationsLoading" description="当前筛选下没有开通申请" :image-size="70"></el-empty>
+              <el-table v-else :data="applications" stripe size="small" v-loading="applicationsLoading">
+                <el-table-column prop="id" label="申请单号" width="146"></el-table-column>
+                <el-table-column prop="name" label="申请人" width="96"></el-table-column>
+                <el-table-column prop="username" label="期望账号" width="112"></el-table-column>
+                <el-table-column label="角色" width="104"><template #default="{row}"><el-tag size="small" effect="plain">{{ applyRoleLabel(row.role) }}</el-tag></template></el-table-column>
+                <el-table-column prop="contact" label="联系方式" width="124"></el-table-column>
+                <el-table-column label="说明" min-width="150"><template #default="{row}"><span style="color:var(--muted)">{{ row.note || '—' }}</span></template></el-table-column>
+                <el-table-column prop="created_at" label="提交时间" width="152"></el-table-column>
+                <el-table-column label="状态" width="146">
+                  <template #default="{row}">
+                    <el-tag size="small" effect="light" :type="row.status==='pending'?'warning':(row.status==='approved'?'success':'danger')">{{ applyStatusLabel(row.status) }}</el-tag>
+                    <div v-if="row.reject_reason" style="margin-top:4px;font-size:11px;color:var(--muted)">驳回：{{ row.reject_reason }}</div>
+                    <div v-else-if="row.reviewed_by" style="margin-top:4px;font-size:11px;color:var(--muted)">{{ row.reviewed_by }} · {{ row.reviewed_at }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="236">
+                  <template #default="{row}">
+                    <template v-if="row.status==='pending'">
+                      <el-input v-model="applyPassword[row.id]" size="small" placeholder="初始密码（留空自动生成）" style="margin-bottom:6px"></el-input>
+                      <el-button size="small" type="primary" @click="approveApplication(row)">通过并开通</el-button>
+                      <el-button size="small" type="danger" plain @click="rejectApplication(row)">驳回</el-button>
+                    </template>
+                    <span v-else style="color:var(--muted);font-size:12px">{{ row.user_id ? ('已建号 user#' + row.user_id) : '已处理' }}</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
             <el-card>
               <template #header><div style="display:flex;justify-content:space-between;align-items:center"><b>用户与角色管理</b><el-button size="small" @click="loadUsers">刷新</el-button></div></template>
               <el-form :inline="true" :model="userForm" @submit.prevent>
@@ -2106,7 +2232,7 @@
                 <el-form-item label="知识库上传权限"><el-switch v-model="userForm.can_upload"></el-switch></el-form-item>
                 <el-form-item><el-button type="primary" @click="createUser">创建账号</el-button></el-form-item>
               </el-form>
-              <el-table :data="users" stripe v-loading="usersLoading"><el-table-column prop="username" label="账号" width="180"></el-table-column><el-table-column prop="display_name" label="显示名称" width="180"></el-table-column><el-table-column label="角色" width="220"><template #default="{row}"><el-select v-model="row.role" :disabled="row.username===user.username" @change="saveUserRole(row)"><el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value"></el-option></el-select></template></el-table-column><el-table-column label="知识库上传" width="120"><template #default="{row}"><el-switch v-model="row.can_upload" :active-value="1" :inactive-value="0" :disabled="row.role==='admin'" @change="saveUserUpload(row)"></el-switch></template></el-table-column><el-table-column prop="created_at" label="创建时间"></el-table-column><el-table-column label="操作" width="150"><template #default="{row}"><el-button text type="primary" @click="resetUserPassword(row)">重置密码</el-button></template></el-table-column></el-table>
+              <el-table :data="users" stripe v-loading="usersLoading"><el-table-column prop="username" label="账号" width="180"></el-table-column><el-table-column prop="display_name" label="显示名称" width="180"></el-table-column><el-table-column label="角色" width="220"><template #default="{row}"><el-select v-model="row.role" :disabled="row.username===user.username" @change="saveUserRole(row)"><el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value"></el-option></el-select></template></el-table-column><el-table-column label="知识库上传" width="120"><template #default="{row}"><el-switch v-model="row.can_upload" :active-value="1" :inactive-value="0" :disabled="row.role==='admin'" @change="saveUserUpload(row)"></el-switch></template></el-table-column><el-table-column prop="created_at" label="创建时间"></el-table-column><el-table-column label="密码状态" width="118"><template #default="{row}"><el-tag v-if="row.must_change_password" size="small" type="warning" effect="plain">初始密码待改</el-tag><span v-else style="color:var(--muted);font-size:12px">已改密</span></template></el-table-column><el-table-column label="操作" width="150"><template #default="{row}"><el-button text type="primary" @click="resetUserPassword(row)">重置密码</el-button></template></el-table-column></el-table>
             </el-card>
           </div>
 
@@ -2328,6 +2454,40 @@
     </div>
   </el-drawer>
 
+  <!-- 首次登录强制修改初始密码（闭环：新建号 / 管理员重置后） -->
+  <el-dialog v-if="token && pwdForceOpen" v-model="pwdForceOpen" class="lc-dialog pwd-force-dialog" width="396px"
+             align-center :show-close="false" :close-on-click-modal="false" :close-on-press-escape="false" append-to-body>
+    <div class="lc-dialog-body">
+      <div class="lc-dialog-head">
+        <span class="lc-dialog-orb" aria-hidden="true">🔒</span>
+        <div><strong>首次登录需修改密码</strong><small>INITIAL PASSWORD RESET</small></div>
+      </div>
+      <p class="lc-dialog-text">当前账号仍在使用管理员下发的初始密码。为保障生产数据安全，请先设置你自己的新密码，之后即可进入系统。</p>
+      <label class="lc-field">
+        <span class="lc-label">当前（初始）密码</span>
+        <el-input v-model="pwdForceForm.current_password" type="password" show-password placeholder="请输入管理员给你的初始密码"></el-input>
+        <span class="lc-line" aria-hidden="true"></span>
+      </label>
+      <label class="lc-field">
+        <span class="lc-label">新密码</span>
+        <el-input v-model="pwdForceForm.new_password" type="password" show-password placeholder="至少 8 位，需含字母和数字"></el-input>
+        <span class="lc-line" aria-hidden="true"></span>
+      </label>
+      <label class="lc-field">
+        <span class="lc-label">确认新密码</span>
+        <el-input v-model="pwdForceForm.confirm_password" type="password" show-password placeholder="请再次输入新密码"></el-input>
+        <span class="lc-line" aria-hidden="true"></span>
+      </label>
+      <div class="lc-dialog-foot">
+        <button type="button" class="lc-submit ghost" @click="pwdForceLogout"><span>退出登录</span></button>
+        <button type="button" class="lc-submit" :disabled="pwdForceLoading" @click="pwdForceSubmit">
+          <span v-if="pwdForceLoading" class="lc-spin" aria-hidden="true"></span>
+          <span>{{ pwdForceLoading ? '提交中…' : '修改并进入' }}</span>
+        </button>
+      </div>
+    </div>
+  </el-dialog>
+
   <!-- 命令面板（Ctrl / ⌘ + K） -->
   <div v-if="token && cmdkOpen" class="cmdk-overlay" @click.self="cmdkOpen=false">
     <div class="cmdk-panel" role="dialog" aria-label="命令面板">
@@ -2399,8 +2559,13 @@ const app = createApp({
       loginLoading: false,
       loginMode: 'login', loginError: '', loginFlash: false,
       rememberMe: localStorage.getItem('agent_remember') === '1',
-      loginApply: { name: '', username: '', role: 'engineer' }, loginApplyDone: false,
+      loginApply: { name: '', username: '', role: 'engineer', contact: '', note: '' },
+      loginApplyLoading: false, loginApplyError: '', loginApplyResult: null,
+      loginQueryOpen: false, loginQuery: { username: '', name: '' }, loginQueryResult: null,
       forgotOpen: false, forgotAccount: '',
+      pwdForceOpen: false, pwdForceLoading: false,
+      pwdForceForm: { current_password: '', new_password: '', confirm_password: '' },
+      applications: [], applicationsLoading: false, applicationsPending: 0, applyFilter: 'pending', applyPassword: {},
       active: 'dashboard', sidebarCollapsed: localStorage.getItem('agent_sidebar_collapsed') === '1',
       stats: {},
       datasets: [],
@@ -2522,6 +2687,10 @@ const app = createApp({
     pcUsedPercent() { return Math.max(0, Math.min(100, Math.round(this.pcUsedBytes / this.pcFileBudget * 100))); },
     pcUsedText() { return this.pcFmtSize(this.pcUsedBytes); },
     assistantWelcome() { return this.user.role==='admin' ? '你好，我是系统运维助手，可协助理解用户角色、审计、系统设置与 DeepSeek 接入。' : this.user.role==='algorithm' ? '你好，我是实施专家助手，可协助解读参数、寻优收敛和模型指标。' : this.user.role==='viewer' ? '欢迎体验演示系统。我可以介绍模块、术语和演示流程。' : '你好，我是工艺操作助手，可协助查看数据质量、解释指标并引导运行业务流程。'; },
+    loginQueryStatusLabel() {
+      const s = this.loginQueryResult && this.loginQueryResult.status;
+      return { pending: '审核中', approved: '已开通', rejected: '已驳回', none: '未查询到记录' }[s] || '查询结果';
+    },
     assistantQuickActions() { return this.user.role==='admin' ? ['说明角色权限','如何检查 DeepSeek 接入','如何查询审计日志'] : this.user.role==='algorithm' ? ['解释共线性阈值','如何判断寻优收敛','如何对比模型结果'] : this.user.role==='viewer' ? ['加载精馏塔仿真数据','系统可以做什么','解释闭环寻优'] : ['解释数据质量指标','如何提取动态段','如何运行闭环寻优']; },
     dashboardStep() {
       if (!this.datasets.length) return 0;
@@ -3245,7 +3414,15 @@ const app = createApp({
         this.token = data.token; this.user = data.user;
         localStorage.setItem('agent_token', data.token);
         localStorage.setItem('agent_user', JSON.stringify(data.user));
-        ElMessage.success('登录成功');
+        if (data.user && data.user.must_change_password) {
+          // 闭环：新建号 / 管理员重置后的初始密码，必须首登改密
+          this.pwdForceForm = { current_password: this.loginForm.password || '', new_password: '', confirm_password: '' };
+          this.pwdForceOpen = true;
+          this.loginForm.password = '';
+          ElMessage.warning('首次登录：请先修改初始密码');
+        } else {
+          ElMessage.success('登录成功');
+        }
         this.loadAll();
       } catch (e) {
         this.loginError = '无法连接服务：' + (e && e.message ? e.message : '网络异常') + '，请检查后端是否已启动。';
@@ -3269,6 +3446,134 @@ const app = createApp({
         this.loginApplyDone = false; ElMessage.warning('请填写姓名与期望账号'); return;
       }
       this.loginApplyDone = true;
+    },
+    // 把后端/校验错误转成一句人话（Pydantic 422 的 detail 是数组）
+    friendlyDetail(detail, fallback) {
+      if (typeof detail === 'string' && detail.trim()) return detail.trim();
+      if (Array.isArray(detail) && detail.length) {
+        const f = detail[0] || {};
+        const field = Array.isArray(f.loc) ? f.loc[f.loc.length - 1] : '';
+        const names = { username: '账号', name: '姓名', role: '角色', password: '密码', reason: '驳回原因', contact: '联系方式', note: '说明' };
+        return (names[field] || field || '提交内容') + '格式不正确，请检查后重试';
+      }
+      return fallback || '';
+    },
+    async loginApplySubmit() {
+      if (this.loginApplyLoading) return;
+      this.loginApplyError = '';
+      const name = String(this.loginApply.name || '').trim();
+      const username = String(this.loginApply.username || '').trim();
+      if (!name) { this.loginApplyError = '请填写姓名'; return; }
+      if (!/^[A-Za-z][A-Za-z0-9_.-]{2,19}$/.test(username)) { this.loginApplyError = '账号需以字母开头，长度 3-20 位，可用字母、数字、下划线、点或短横线'; return; }
+      this.loginApplyLoading = true;
+      try {
+        const res = await fetch('/api/auth/apply', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, username: username, role: this.loginApply.role, contact: String(this.loginApply.contact || '').trim(), note: String(this.loginApply.note || '').trim() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { this.loginApplyError = this.friendlyDetail(data.detail, '提交失败，请稍后重试'); return; }
+        this.loginApplyResult = data;
+        ElMessage.success('申请已提交：' + data.application_id);
+      } catch (e) {
+        this.loginApplyError = '无法连接服务：' + (e && e.message ? e.message : '网络异常');
+      } finally { this.loginApplyLoading = false; }
+    },
+    loginApplyReset() {
+      this.loginApplyResult = null; this.loginApplyError = '';
+      this.loginApply = { name: '', username: '', role: 'engineer', contact: '', note: '' };
+    },
+    async loginQuerySubmit() {
+      const username = String(this.loginQuery.username || '').trim();
+      const name = String(this.loginQuery.name || '').trim();
+      if (!username || !name) { ElMessage.warning('请填写申请时的账号与姓名'); return; }
+      this.loginQueryResult = null;
+      try {
+        const res = await fetch('/api/auth/apply/status?username=' + encodeURIComponent(username) + '&name=' + encodeURIComponent(name));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { ElMessage.error(this.friendlyDetail(data.detail, '查询失败，请稍后重试')); return; }
+        this.loginQueryResult = data;
+      } catch (e) { ElMessage.error('查询失败：' + (e && e.message ? e.message : '网络异常')); }
+    },
+    applyRoleLabel(role) { return { engineer: '工艺工程师', algorithm: '算法工程师', viewer: '只读访客', admin: '系统管理员' }[role] || role || '—'; },
+    applyStatusLabel(status) { return { pending: '待审核', approved: '已开通', rejected: '已驳回' }[status] || status || '—'; },
+    // 首次登录强制修改初始密码（新建号 / 管理员重置后触发）
+    pwdForceRules(pwd, cur) {
+      const p = String(pwd || '');
+      if (p.length < 8) return '新密码至少 8 位';
+      if (p.length > 64) return '新密码不能超过 64 位';
+      if (!/[A-Za-z]/.test(p) || !/\d/.test(p)) return '新密码需同时包含字母和数字';
+      if (cur && p === String(cur)) return '新密码不能与初始密码相同';
+      return '';
+    },
+    async pwdForceSubmit() {
+      if (this.pwdForceLoading) return;
+      const cur = String(this.pwdForceForm.current_password || '');
+      const nw = String(this.pwdForceForm.new_password || '');
+      const cf = String(this.pwdForceForm.confirm_password || '');
+      if (!cur) { ElMessage.warning('请输入管理员下发的初始密码'); return; }
+      const bad = this.pwdForceRules(nw, cur);
+      if (bad) { ElMessage.warning(bad); return; }
+      if (nw !== cf) { ElMessage.warning('两次输入的新密码不一致'); return; }
+      this.pwdForceLoading = true;
+      try {
+        await this.api('/profile/password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current_password: cur, new_password: nw }),
+        });
+        this.user.must_change_password = false;
+        try { localStorage.setItem('agent_user', JSON.stringify(this.user)); } catch (e) {}
+        this.pwdForceForm = { current_password: '', new_password: '', confirm_password: '' };
+        this.pwdForceOpen = false;
+        ElMessage.success('密码已更新，初始密码已失效');
+      } catch (e) {} finally { this.pwdForceLoading = false; }
+    },
+    pwdForceLogout() { this.pwdForceOpen = false; this.logout(); },
+    async loadApplications() {
+      if (this.user.role !== 'admin') return;
+      this.applicationsLoading = true;
+      try {
+        const data = await this.api('/admin/applications' + (this.applyFilter ? ('?status=' + this.applyFilter) : ''));
+        this.applications = Array.isArray(data.items) ? data.items : [];
+        this.applicationsPending = Number(data.pending || 0);
+      } catch (e) { this.applications = []; }
+      finally { this.applicationsLoading = false; }
+    },
+    async approveApplication(row) {
+      const password = String(this.applyPassword[row.id] || '').trim();
+      const tip = password
+        ? '将使用你填写的初始密码。'
+        : '未填写初始密码，系统会随机生成一个并在开通后显示一次。';
+      try {
+        await ElMessageBox.confirm(`确认为「${row.username}」开通账号？角色：${this.applyRoleLabel(row.role)}。${tip}`, '通过开通申请', { type: 'warning', confirmButtonText: '通过并开通', cancelButtonText: '取消' });
+      } catch (e) { return; }
+      try {
+        const data = await this.api('/admin/applications/' + encodeURIComponent(row.id) + '/approve', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: password }),
+        });
+        this.applyPassword[row.id] = '';
+        await this.loadApplications(); await this.loadUsers();
+        await ElMessageBox.alert(
+          '账号 ' + data.username + ' 已开通（' + this.applyRoleLabel(data.role) + '）\n初始密码：' + data.initial_password + (data.generated ? '\n这是系统随机密码，仅显示这一次，请立即转交申请人。' : '\n这是你填写的初始密码，请转交申请人。') + '\n该账号首次登录时会被要求立即修改此初始密码（用户表将显示「初始密码待改」）。',
+          '开通成功', { confirmButtonText: '我已记录' });
+      } catch (e) {}
+    },
+    async rejectApplication(row) {
+      let reason = '';
+      try {
+        const r = await ElMessageBox.prompt(`填写驳回「${row.username}」的原因，申请人可在登录页查询到该说明。`, '驳回开通申请', {
+          inputPlaceholder: '例如：岗位信息不完整，请补充后重新提交',
+          inputValidator: (v) => (v && String(v).trim().length >= 2) || '请至少填写 2 个字',
+          confirmButtonText: '确认驳回', cancelButtonText: '取消', type: 'warning',
+        });
+        reason = r.value;
+      } catch (e) { return; }
+      try {
+        await this.api('/admin/applications/' + encodeURIComponent(row.id) + '/reject', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: String(reason).trim() }),
+        });
+        await this.loadApplications();
+      } catch (e) {}
     },
     loginForgotSubmit() {
       const acc = String(this.forgotAccount || '').trim();
@@ -3337,6 +3642,7 @@ const app = createApp({
       this.loadStats(); this.loadDatasets(); this.loadTasks();
       if (this.user.role === 'admin') this.loadAudits();
       if (this.user.role === 'admin') this.loadUsers();
+      if (this.user.role === 'admin') this.loadApplications();
       if (['admin','algorithm'].includes(this.user.role)) { this.loadTemplates(); this.loadWorkflowTemplates(); }
       this.loadSystemSettings();
     },
@@ -3517,7 +3823,7 @@ const app = createApp({
       catch(e) {}
     },
     async saveUserRole(row) { try { await this.api('/admin/users/'+row.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:row.role})}); ElMessage.success('角色已更新'); } catch(e) { await this.loadUsers(); } },
-    async resetUserPassword(row) { try { const {value}=await ElMessageBox.prompt('输入新密码（至少 8 位）','重置密码',{inputType:'password',inputValidator:v=>v&&v.length>=8||'密码至少需要 8 位'}); await this.api('/admin/users/'+row.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:value})}); ElMessage.success('密码已重置'); } catch(e) {} },
+    async resetUserPassword(row) { try { const {value}=await ElMessageBox.prompt('输入新的初始密码（至少 8 位）。该用户下次登录时会被要求立即修改密码。','重置密码',{inputType:'password',inputValidator:v=>v&&v.length>=8||'密码至少需要 8 位'}); await this.api('/admin/users/'+row.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:value})}); ElMessage.success('密码已重置，该用户下次登录需修改初始密码'); await this.loadUsers(); } catch(e) {} },
     async loadTemplates() { try { this.parameterTemplates = await this.api('/config/parameter-templates'); } catch (e) {} },
     async loadSystemSettings() { try { const s=await this.api('/config/system'); this.systemSettings={...this.systemSettings,...s}; this.taskForm.n_trials=s.default_n_trials; this.taskForm.max_lag=s.max_lag; this.taskForm.corr_threshold=s.corr_threshold; this.taskForm.energy_ratio=s.dynamic_energy_ratio; this.taskForm.early_stop_tol=s.early_stop_tol; } catch(e) {} },
     async saveSystemSettings() { try { this.systemSettings=await this.api('/config/system',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.systemSettings)}); await this.loadSystemSettings(); ElMessage.success('全局算法参数已保存'); } catch(e) {} },
