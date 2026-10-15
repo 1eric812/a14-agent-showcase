@@ -6,6 +6,19 @@
 
   /* ---------- 基础演示数据 ---------- */
   const user = { id: 1, username: 'admin', display_name: '演示管理员', role: 'admin', created_at: '2026-08-12 09:30' };
+  /* 账号列表可变：管理员通过开通申请后会新增账号，演示闭环 */
+  const users = [
+    { id: 1, username: 'admin', display_name: '演示管理员', role: 'admin', can_upload: 1, created_at: '2026-10-01' },
+    { id: 2, username: 'engineer', display_name: '工艺工程师', role: 'engineer', can_upload: 1, created_at: '2026-10-02' },
+    { id: 3, username: 'algorithm', display_name: '算法工程师', role: 'algorithm', can_upload: 1, created_at: '2026-10-03' },
+    { id: 4, username: 'viewer', display_name: '演示访客', role: 'viewer', can_upload: 0, created_at: '2026-10-04' }
+  ];
+  /* 账号开通申请（演示数据，提交/审核均在浏览器内完成） */
+  const applications = [
+    { id: 'AP-20261015-001', name: '王芳', username: 'wangfang', role: 'engineer', contact: '138****6621', note: '工艺组，需要上传装置运行数据并跑闭环寻优', status: 'pending', created_at: '2026-10-15 20:12:44', reviewed_at: '', reviewed_by: '', reject_reason: '', user_id: null },
+    { id: 'AP-20261014-002', name: '刘洋', username: 'liuyang', role: 'viewer', contact: 'liuyang@example.com', note: '先了解系统能力，查看报告样例', status: 'approved', created_at: '2026-10-14 15:38:02', reviewed_at: '2026-10-14 16:05:11', reviewed_by: 'admin', reject_reason: '', user_id: 6 },
+    { id: 'AP-20261013-003', name: '赵敏', username: 'zhaomin', role: 'algorithm', contact: '135****8890', note: '想直接调参寻优', status: 'rejected', created_at: '2026-10-13 09:20:31', reviewed_at: '2026-10-13 10:02:47', reviewed_by: 'admin', reject_reason: '岗位信息不完整，请补充所属装置与用途后重新提交', user_id: null }
+  ];
   const datasets = [
     { id: 8, name: '精馏塔仿真数据', source: '仿真生成', row_count: 3000, column_count: 8, time_span: '2026-10-14 10:00 ~ 10:49', created_at: '2026-10-14 16:30' },
     { id: 7, name: '反应器温控数据', source: 'CSV 上传', row_count: 2400, column_count: 6, time_span: '2026-10-13 08:00 ~ 08:40', created_at: '2026-10-13 14:12' },
@@ -53,13 +66,19 @@
     const method = ((init || {}).method || 'GET').toUpperCase();
     const path = route.split('?')[0];
     const idMatch = path.match(/^\/tasks\/([^/]+)$/);
-    if (path === '/auth/login') return json({ token: 'a14-static-demo-token', user });
+    if (path === '/auth/login') {
+      // 演示：管理员/常规账号直接进入；用被审批开通的新账号登录会触发「首次登录强制改密」
+      const b = parseBody(init);
+      const uname = String(b.username || '').trim();
+      const hit = users.find((u) => u.username === uname && u.must_change_password);
+      return json({ token: 'a14-static-demo-token', user: Object.assign({}, user, { must_change_password: !!hit }) });
+    }
     if (path === '/auth/me') return json(user);
     if (path === '/profile') {
       if (method === 'PATCH') { const b = parseBody(init); if (b.display_name) user.display_name = b.display_name; return json(user); }
       return json(user);
     }
-    if (path === '/profile/password') return json({ ok: true });
+    if (path === '/profile/password') return json({ ok: true, cleared_initial: true });
     if (path === '/profile/preferences') {
       if (method === 'GET') return json(store.get('a14_demo_prefs', {}));
       const b = parseBody(init); store.set('a14_demo_prefs', b); return json(Object.assign({ ok: true }, b));
@@ -92,7 +111,52 @@
     if (path === '/config/parameter-templates/import') return json({ ok: true });
     if (path === '/config/system') return json({ default_n_trials: 10, max_n_trials: 100, early_stop_tol: .5, max_lag: 30, corr_threshold: .95, dynamic_energy_ratio: .5, llm_configured: false });
     if (path === '/config/workflow-templates') return json([{ id: 1, name: '全流程闭环寻优', instruction: '清洗异常并提取动态段，处理时滞与共线性后闭环寻优', updated_by: '算法工程师', parameters: { n_trials: 10, window: 40, energy_ratio: .5 } }]);
-    if (path === '/admin/users') return json([{ id: 1, username: 'admin', display_name: '演示管理员', role: 'admin', can_upload: 1, created_at: '2026-10-01' }, { id: 2, username: 'engineer', display_name: '工艺工程师', role: 'engineer', can_upload: 1, created_at: '2026-10-02' }, { id: 3, username: 'algorithm', display_name: '算法工程师', role: 'algorithm', can_upload: 1, created_at: '2026-10-03' }, { id: 4, username: 'viewer', display_name: '演示访客', role: 'viewer', can_upload: 0, created_at: '2026-10-04' }]);
+    if (path === '/admin/users') return json(users);
+    /* ---- 账号开通申请闭环（提交 → 审核 → 查进度）---- */
+    if (path === '/auth/apply' && method === 'POST') {
+      const b = parseBody(init);
+      const uname = String(b.username || '').trim();
+      if (!/^[A-Za-z][A-Za-z0-9_.-]{2,19}$/.test(uname)) return json({ detail: '账号需以字母开头，长度 3-20 位，可用字母、数字、下划线、点或短横线' }, 422);
+      if (users.some((u) => u.username === uname)) return json({ detail: '该账号已存在，请直接登录或使用找回密码' }, 409);
+      if (applications.some((a) => a.username === uname && a.status === 'pending')) return json({ detail: '该账号已有待审核的申请，请等待管理员处理' }, 409);
+      const id = 'AP-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + String(applications.length + 1).padStart(3, '0');
+      const row = { id, name: b.name, username: uname, role: b.role || 'engineer', contact: b.contact || '', note: b.note || '', status: 'pending', created_at: new Date().toLocaleString('zh-CN'), reviewed_at: '', reviewed_by: '', reject_reason: '', user_id: null };
+      applications.unshift(row);
+      return json({ ok: true, application_id: id, status: 'pending', created_at: row.created_at, role: row.role });
+    }
+    if (path === '/auth/apply/status') {
+      const q = new URLSearchParams(route.split('?')[1] || '');
+      const uname = q.get('username') || '';
+      const nm = (q.get('name') || '').replace(/\s/g, '');
+      const hit = applications.filter((a) => a.username === uname && String(a.name).replace(/\s/g, '') === nm).pop();
+      if (!hit) return json({ username: uname, status: 'none', message: '没有查询到匹配的申请记录，请核对账号与姓名是否与提交时一致' });
+      const msgs = { pending: '申请已提交，等待管理员审核（演示环境不会真正建号）', approved: '申请已通过，账号已开通。用该账号登录会触发首次登录强制改密演示', rejected: '申请未通过，可联系管理员了解原因后重新提交' };
+      return json(Object.assign({}, hit, { username: uname, status: hit.status, message: msgs[hit.status] || '' }));
+    }
+    if (path === '/admin/applications') {
+      const q = new URLSearchParams(route.split('?')[1] || '');
+      const st = q.get('status') || '';
+      const items = st ? applications.filter((a) => a.status === st) : applications.slice();
+      return json({ items, pending: applications.filter((a) => a.status === 'pending').length, total: applications.length });
+    }
+    const appMatch = path.match(/^\/admin\/applications\/([^/]+)\/(approve|reject)$/);
+    if (appMatch) {
+      const row = applications.find((a) => String(a.id) === decodeURIComponent(appMatch[1]));
+      if (!row) return json({ detail: '申请不存在' }, 404);
+      if (row.status !== 'pending') return json({ detail: '该申请已是「' + row.status + '」状态，无需重复处理' }, 409);
+      const stamp = new Date().toLocaleString('zh-CN');
+      if (appMatch[2] === 'approve') {
+        const b = parseBody(init);
+        const manual = String(b.password || '').trim();
+        const pwd = manual || 'demo' + Math.random().toString(36).slice(2, 8);
+        const uid = Math.max.apply(null, users.map((u) => u.id)) + 1;
+        users.push({ id: uid, username: row.username, display_name: row.name, role: row.role, can_upload: (row.role === 'engineer' || row.role === 'algorithm') ? 1 : 0, created_at: new Date().toLocaleDateString('zh-CN'), must_change_password: 1 });
+        Object.assign(row, { status: 'approved', reviewed_at: stamp, reviewed_by: 'admin', reject_reason: '', user_id: uid });
+        return json({ ok: true, application: row, user_id: uid, username: row.username, role: row.role, display_name: row.name, initial_password: pwd, generated: !manual, must_change_password: true });
+      }
+      Object.assign(row, { status: 'rejected', reviewed_at: stamp, reviewed_by: 'admin', reject_reason: String(parseBody(init).reason || '').trim() });
+      return json({ ok: true, application: row });
+    }
     if (path === '/audit') return json([{ id: 24, action: 'RUN_OPTIMIZE', resource: 'task#24024', operator: 'admin', detail: '提交闭环寻优任务', ip: '127.0.0.1', created_at: '2026-10-14 16:42:00' }, { id: 23, action: 'DATASET_CREATE', resource: 'dataset#8', operator: 'admin', detail: '生成精馏塔仿真数据', ip: '127.0.0.1', created_at: '2026-10-14 16:30:00' }]);
     if (path === '/experiments/compare') return json(tasks.slice(0, 2).map((t) => ({ label: (t.result.snapshot || {}).label, dataset_id: t.dataset_id, best_fit: t.best_fit, r2: .914, mse: .014, aic: -263, rows: 1842, variables: 3 })));
     if (path === '/assistant/chat') return json({ reply: '**静态界面演示** — 后台计算与大模型问答未连接，这里给出的是界面内置样例：\n\n**我能带你看的内容**\n- 数据概览：数据质量评分、缺失与异常分布\n- 预处理分析：动态片段优选、时滞与共线性\n- 闭环寻优：参数搜索轨迹与 FIT 收敛曲线\n- 分析报告：模型指标、实验对比与快照\n\n需要真实问答与计算时，接入后端并配置 DeepSeek 即可（系统设置 → 全局算法与运行设置）。', action: null });
