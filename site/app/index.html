@@ -38,7 +38,7 @@
     .metric { padding:12px; border:1px solid color-mix(in srgb,var(--brand) 12%,var(--line)); border-left:3px solid var(--brand); border-radius:10px; background:color-mix(in srgb,var(--brand-soft) 52%,rgba(239,245,247,.82)); }
     .metric strong { display:block; font-size:21px; color:var(--ink); }
     .metric span { color:#909399; font-size:12px; }
-    .pet-dock { position:fixed; right:24px; bottom:24px; z-index:2100; display:flex; align-items:flex-end; gap:10px; }
+    .pet-dock { position:fixed; right:24px; bottom:24px; z-index:2100; display:flex; align-items:flex-end; gap:10px; touch-action:none; }
     .pet-launcher { position:relative; }
     .pet-ai-badge { position:absolute; z-index:1; top:-8px; right:-11px; padding:4px 8px; border:2px solid #fff; border-radius:999px; background:var(--brand-dark); color:#fff; font-size:10px; font-weight:750; letter-spacing:.35px; line-height:1.2; box-shadow:0 3px 10px color-mix(in srgb,var(--brand-dark),transparent 76%); }
     .pet-ai-badge:before { content:"✦"; margin-right:3px; color:#a9f58c; }
@@ -46,6 +46,8 @@
     .pet-style-trigger:hover { background:var(--brand-soft) !important; }
     .pet-picker { color:var(--ink); }
     .pet-picker-title { margin:0 0 10px; font-size:14px; font-weight:700; }
+    .pet-pos-reset { display:block; width:100%; margin-top:10px; padding:7px 0; border:1px solid color-mix(in srgb,var(--brand) 30%,transparent); border-radius:8px; background:color-mix(in srgb,var(--brand) 8%,transparent); color:var(--brand-dark); font:650 12px/1 inherit; cursor:pointer; transition:background .18s ease,border-color .18s ease; }
+    .pet-pos-reset:hover { border-color:var(--brand); background:var(--brand-soft); }
     .pet-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
     .pet-option { min-width:0; padding:10px 5px 8px; border:1px solid var(--line); border-radius:11px; background:color-mix(in srgb,var(--brand-soft) 25%,#f7f9fa); color:var(--ink); text-align:center; cursor:pointer; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease; }
     .pet-option:hover,.pet-option.selected { border-color:color-mix(in srgb,var(--brand) 58%,white); background:var(--brand-soft); box-shadow:0 5px 14px color-mix(in srgb,var(--brand) 12%,transparent); }
@@ -82,6 +84,37 @@
     @keyframes pet-wave { from { transform:rotate(-7deg) translateY(-1px); } to { transform:rotate(7deg) translateY(-3px); } }
     @keyframes signal-pulse { 0%,100% { opacity:.75; } 50% { opacity:1; } }
     @media (prefers-reduced-motion:reduce) { .desk-pet,.pet-fab:hover .desk-pet,.pet-signal { animation:none; } }
+    /* 浅色模式：桌宠减淡 + 徽标「底色变淡、文字加黑」，避免与页面背景融为一体 */
+    html[data-theme="light"] .pet-ai-badge { border-color:#fff; background:color-mix(in srgb,var(--brand) 13%,#fff); color:var(--brand-dark); font-weight:800; box-shadow:0 3px 10px color-mix(in srgb,var(--brand) 20%,transparent); }
+    html[data-theme="light"] .pet-ai-badge:before { color:var(--brand); }
+    html[data-theme="light"] .pet-fab { background:linear-gradient(145deg,#fff,var(--brand-soft)) !important; box-shadow:0 7px 22px color-mix(in srgb,var(--brand) 26%,transparent), inset 0 0 0 1px color-mix(in srgb,var(--brand) 16%,transparent) !important; }
+    html[data-theme="light"] .pet-fab:hover { box-shadow:0 10px 26px color-mix(in srgb,var(--brand) 34%,transparent), inset 0 0 0 1px color-mix(in srgb,var(--brand) 26%,transparent) !important; }
+    html[data-theme="light"] .pet-shadow { fill:color-mix(in srgb,var(--brand) 12%,transparent); }
+    html[data-theme="light"] .pet-body, html[data-theme="light"] .pet-leaf, html[data-theme="light"] .pet-antenna,
+    html[data-theme="light"] .pet-badge, html[data-theme="light"] .pet-robot .pet-antenna,
+    html[data-theme="light"] .pet-robot .pet-leaf, html[data-theme="light"] .pet-owl .pet-leaf { stroke:color-mix(in srgb,var(--brand-dark) 58%,#fff); }
+    html[data-theme="light"] .pet-visor, html[data-theme="light"] .pet-owl-eye { stroke:color-mix(in srgb,var(--brand-dark) 58%,#fff); }
+    /* 浅色模式：个人中心头部卡由深色改为品牌色浅卡，降低明暗割裂感 */
+    html[data-theme="light"] .profile-hero { border-color:color-mix(in srgb,var(--brand) 22%,var(--line)); background:linear-gradient(112deg,color-mix(in srgb,var(--brand-soft) 88%,var(--surface)),color-mix(in srgb,var(--brand-soft) 52%,#fff) 58%,color-mix(in srgb,var(--brand-soft) 80%,var(--surface))); color:var(--ink); }
+    html[data-theme="light"] .profile-hero:after { background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--brand) 52%,transparent),color-mix(in srgb,var(--brand) 18%,transparent),transparent); }
+    html[data-theme="light"] .profile-avatar-ring { border-color:color-mix(in srgb,var(--brand) 30%,var(--line)); background:color-mix(in srgb,var(--brand) 6%,transparent); }
+    html[data-theme="light"] .profile-avatar-ring:before { border-color:color-mix(in srgb,var(--brand) 20%,transparent); border-top-color:color-mix(in srgb,var(--brand) 60%,transparent); }
+    html[data-theme="light"] .profile-hero .profile-avatar { border-color:color-mix(in srgb,var(--brand) 24%,var(--line)); background:color-mix(in srgb,var(--brand) 10%,#fff); color:var(--brand-dark); }
+    html[data-theme="light"] .profile-kicker { color:color-mix(in srgb,var(--brand) 78%,var(--brand-dark)); }
+    html[data-theme="light"] .profile-hero-copy h3 { color:var(--ink); }
+    html[data-theme="light"] .profile-hero-copy p { color:var(--muted); }
+    html[data-theme="light"] .profile-hero-copy p span { color:color-mix(in srgb,var(--muted) 68%,transparent); }
+    html[data-theme="light"] .profile-hero-tags span { border-color:color-mix(in srgb,var(--brand) 22%,var(--line)); color:var(--brand-dark); background:color-mix(in srgb,var(--brand) 8%,#fff); }
+    html[data-theme="light"] .profile-hero-tags .profile-online { color:var(--brand-dark); }
+    html[data-theme="light"] .profile-online i { background:var(--brand); box-shadow:0 0 7px color-mix(in srgb,var(--brand) 42%,transparent); }
+    html[data-theme="light"] .profile-edit-button { border-color:color-mix(in srgb,var(--brand) 34%,transparent) !important; background:color-mix(in srgb,var(--brand) 10%,#fff) !important; color:var(--brand-dark) !important; }
+    html[data-theme="light"] .profile-edit-button:hover { border-color:var(--brand) !important; background:var(--brand-soft) !important; }
+    html[data-theme="light"] .profile-joined { color:var(--muted); }
+    /* 图标底色与卡片底色拉开一档层次（浅色模式），不至于融进去也不刺眼 */
+    html[data-theme="light"] .profile-metric-icon, html[data-theme="light"] .profile-shortcut > i, html[data-theme="light"] .stat-icon { background:color-mix(in srgb,var(--brand) 13%,#fff); border-color:color-mix(in srgb,var(--brand) 24%,var(--line)); color:var(--brand-dark); font-weight:700; }
+    html[data-theme="light"] .stat-card.tone-ok .stat-icon { background:color-mix(in srgb,var(--ok) 12%,#fff); color:var(--ok); }
+    html[data-theme="light"] .stat-card.tone-warn .stat-icon { background:color-mix(in srgb,var(--warn) 12%,#fff); color:var(--warn); }
+    html[data-theme="light"] .stat-card.tone-info .stat-icon { background:color-mix(in srgb,var(--info) 12%,#fff); color:var(--info); }
     .assistant-shell { position:relative; display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:radial-gradient(ellipse at 100% 0%,color-mix(in srgb,var(--brand) 13%,transparent),transparent 42%),linear-gradient(160deg,color-mix(in srgb,var(--brand-soft) 30%,var(--surface)),var(--surface) 58%); }
     .assistant-drawer { --el-drawer-padding-primary:0; }
     .assistant-drawer .el-drawer__body { padding:0; overflow:hidden; }
@@ -2389,7 +2422,7 @@
     <div v-else style="color:#909399">任务尚未完成</div>
   </el-dialog>
 
-  <div v-if="token" class="pet-dock">
+  <div v-if="token" ref="petDock" class="pet-dock" title="按住可拖动移动位置">
     <el-popover v-model:visible="petPickerOpen" placement="top-end" :width="260" trigger="click">
       <template #reference><el-button class="pet-style-trigger" circle aria-label="选择桌宠样式" title="选择桌宠样式"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.3a2.2 2.2 0 0 0 1.6-3.7 1.7 1.7 0 0 1 1.3-2.8H19a2 2 0 0 0 2-2A9 9 0 0 0 12 3Z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.8" cy="11" r="1.1" fill="currentColor"/><circle cx="10.5" cy="7.4" r="1.1" fill="currentColor"/><circle cx="15" cy="7.8" r="1.1" fill="currentColor"/></svg></el-button></template>
       <div class="pet-picker">
@@ -2399,13 +2432,14 @@
             <span class="pet-option-emoji">{{ option.emoji }}</span><strong>{{ option.name }}</strong><small>{{ option.description }}</small>
           </button>
         </div>
+        <button type="button" class="pet-pos-reset" @click="resetPetPos(); petPickerOpen=false">↺ 复位桌宠位置</button>
       </div>
     </el-popover>
     <div class="pet-launcher">
       <span class="pet-ai-badge">AI 助手</span>
-      <el-button class="pet-fab" circle aria-label="打开AI桌宠助手" title="打开 AI 桌宠助手" @click="assistantOpen=true">
+      <el-button class="pet-fab" circle aria-label="打开AI桌宠助手" title="打开 AI 桌宠助手" @click="petFabClick">
         <svg class="desk-pet" :class="'pet-' + petStyle" viewBox="0 0 64 64" role="img" aria-label="AI桌宠">
-          <defs><linearGradient id="petGreen" x1="12" y1="9" x2="52" y2="56" gradientUnits="userSpaceOnUse"><stop :stop-color="selectedTheme.light3"/><stop offset="1" :stop-color="selectedTheme.primary"/></linearGradient></defs>
+          <defs><linearGradient id="petGreen" x1="12" y1="9" x2="52" y2="56" gradientUnits="userSpaceOnUse"><stop :stop-color="darkMode ? selectedTheme.light3 : selectedTheme.light5"/><stop offset="1" :stop-color="darkMode ? selectedTheme.primary : selectedTheme.light3"/></linearGradient></defs>
           <ellipse class="pet-shadow" cx="32" cy="57" rx="17" ry="3.5"/>
           <path v-if="petStyle==='leaf'" class="pet-leaf" d="M21 19C13 18 12 10 13 7c7 1 12 5 12 12m18 0c8-1 9-9 8-12-7 1-12 5-12 12"/>
           <path v-else-if="petStyle==='robot'" class="pet-leaf" d="M14 27h-4v11h5m35-11h4v11h-5M24 16l-3-4m19 4 3-4"/>
@@ -2488,6 +2522,39 @@
     </div>
   </el-dialog>
 
+  <!-- 编辑资料弹窗：顶部「编辑资料」按钮直达，无需下滑找表单 -->
+  <el-dialog v-if="token" v-model="pcEditOpen" class="pc-edit-dialog" width="520px" append-to-body align-center>
+    <template #header>
+      <div style="display:flex;align-items:center;gap:10px">
+        <strong style="font-size:16px">编辑资料</strong>
+        <span style="color:var(--muted);font:650 9px/1 Inter,Consolas,monospace;letter-spacing:.9px">EDIT PROFILE</span>
+      </div>
+    </template>
+    <el-form label-position="top" @submit.prevent>
+      <el-row :gutter="14">
+        <el-col :span="12"><el-form-item label="昵称"><el-input v-model="profileForm.display_name" maxlength="32" show-word-limit placeholder="系统中显示的称呼"></el-input></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="性别">
+          <el-select v-model="pcProfile.gender" style="width:100%"><el-option label="不公开" value="不公开"></el-option><el-option label="男" value="男"></el-option><el-option label="女" value="女"></el-option></el-select>
+        </el-form-item></el-col>
+        <el-col :span="24"><el-form-item label="联系邮箱（本机资料，可选公开）">
+          <el-input v-model="pcProfile.email" placeholder="仅保存在当前浏览器"><template #append><el-checkbox v-model="pcProfile.showEmail">公开</el-checkbox></template></el-input>
+        </el-form-item></el-col>
+        <el-col :span="24"><el-form-item label="个性签名"><el-input v-model="pcProfile.signature" maxlength="40" show-word-limit placeholder="例如：专注流程工业数据优选与闭环寻优"></el-input></el-form-item></el-col>
+        <el-col :span="24"><el-form-item label="技能 / 个人标签">
+          <div>
+            <span class="pc-skill" v-for="t in pcProfile.tags" :key="t">{{ t }}<button type="button" @click="pcRemoveTag(t)" aria-label="移除标签">✕</button></span>
+            <el-input v-model="pcTagInput" size="small" style="width:158px" placeholder="输入后回车添加" @keyup.enter="pcAddTag"></el-input>
+          </div>
+        </el-form-item></el-col>
+      </el-row>
+    </el-form>
+    <template #footer>
+      <el-button plain @click="pickAvatar">更换头像</el-button>
+      <el-button plain @click="pcEditOpen=false">取消</el-button>
+      <el-button type="primary" :loading="pcSaving" @click="pcEditSave">保存</el-button>
+    </template>
+  </el-dialog>
+
   <!-- 命令面板（Ctrl / ⌘ + K） -->
   <div v-if="token && cmdkOpen" class="cmdk-overlay" @click.self="cmdkOpen=false">
     <div class="cmdk-panel" role="dialog" aria-label="命令面板">
@@ -2563,6 +2630,7 @@ const app = createApp({
       loginApplyLoading: false, loginApplyError: '', loginApplyResult: null,
       loginQueryOpen: false, loginQuery: { username: '', name: '' }, loginQueryResult: null,
       forgotOpen: false, forgotAccount: '',
+      pcEditOpen: false, petPos: { x: 0, y: 0 }, petDragged: false,
       pwdForceOpen: false, pwdForceLoading: false,
       pwdForceForm: { current_password: '', new_password: '', confirm_password: '' },
       applications: [], applicationsLoading: false, applicationsPending: 0, applyFilter: 'pending', applyPassword: {},
@@ -2807,7 +2875,67 @@ const app = createApp({
         }));
       } catch (e) {}
     },
-    pcEditProfile() { this.pcTab = 'profile'; this.$nextTick(() => { const r = this.$refs.profileNameInput; if (r && r.focus) { try { r.focus(); } catch (e) {} } }); },
+    pcEditProfile() { this.pcEditOpen = true; },
+    async pcEditSave() { if (await this.pcSaveAll()) { this.pcEditOpen = false; this.pcTab = 'profile'; } },
+    petFabClick() { if (this.petDragged) return; this.assistantOpen = true; },
+    applyPetPos() {
+      const dock = this.$refs.petDock; if (!dock) return;
+      dock.style.left = this.petPos.x + 'px';
+      dock.style.top = this.petPos.y + 'px';
+      dock.style.right = 'auto';
+      dock.style.bottom = 'auto';
+    },
+    petDefaultPos() {
+      const dock = this.$refs.petDock;
+      const w = (dock && dock.offsetWidth) || 96, h = (dock && dock.offsetHeight) || 84;
+      return { x: Math.max(8, window.innerWidth - w - 24), y: Math.max(8, window.innerHeight - h - 24) };
+    },
+    resetPetPos() {
+      this.petPos = this.petDefaultPos();
+      this.applyPetPos();
+      try { localStorage.removeItem('agent_pet_pos'); } catch (e) {}
+      ElMessage.success('桌宠位置已复位');
+    },
+    initPetDrag() {
+      const dock = this.$refs.petDock; if (!dock || this._petDragInit) return;
+      this._petDragInit = true;
+      try {
+        const saved = JSON.parse(localStorage.getItem('agent_pet_pos') || 'null');
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) this.petPos = saved;
+        else this.petPos = this.petDefaultPos();
+      } catch (e) { this.petPos = this.petDefaultPos(); }
+      this.applyPetPos();
+      let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, dragging = false;
+      const onDown = (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        dragging = true; moved = false;
+        sx = e.clientX; sy = e.clientY; ox = this.petPos.x; oy = this.petPos.y;
+      };
+      const onMove = (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - sx, dy = e.clientY - sy;
+        if (!moved && Math.hypot(dx, dy) < 6) return;
+        moved = true;
+        const w = dock.offsetWidth || 80, h = dock.offsetHeight || 80;
+        this.petPos = {
+          x: Math.min(Math.max(ox + dx, 8), window.innerWidth - w - 8),
+          y: Math.min(Math.max(oy + dy, 8), window.innerHeight - h - 8),
+        };
+        this.applyPetPos();
+      };
+      const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        if (moved) {
+          this.petDragged = true;
+          try { localStorage.setItem('agent_pet_pos', JSON.stringify(this.petPos)); } catch (e) {}
+          setTimeout(() => { this.petDragged = false; }, 150);
+        }
+      };
+      dock.addEventListener('pointerdown', onDown);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
     pickAvatar() { const i = this.$refs.avatarFile; if (i) i.click(); },
     onAvatarChange(e) {
       const f = (e.target.files || [])[0];
@@ -2832,7 +2960,8 @@ const app = createApp({
         if (this.profileForm.display_name && this.profileForm.display_name !== this.user.display_name) await this.saveProfile();
         this.pcPersist();
         ElMessage.success('个人资料已保存');
-      } catch (e) {} finally { this.pcSaving = false; }
+        return true;
+      } catch (e) { return false; } finally { this.pcSaving = false; }
     },
     pcResetProfile() {
       this.pcProfile = Object.assign(this.pcProfile, { gender:'不公开', email:'', showEmail:false, signature:'专注流程工业时序数据优选与闭环寻优', tags:['时序建模','闭环寻优','工艺优化'] });
@@ -3424,6 +3553,7 @@ const app = createApp({
           ElMessage.success('登录成功');
         }
         this.loadAll();
+        this.$nextTick(() => this.initPetDrag());
       } catch (e) {
         this.loginError = '无法连接服务：' + (e && e.message ? e.message : '网络异常') + '，请检查后端是否已启动。';
       } finally { this.loginLoading = false; }
@@ -4070,6 +4200,7 @@ const app = createApp({
     this.applyPersonalTheme();
     this.applyDarkMode();
     this.pcHydrate();
+    if (this.token) this.$nextTick(() => this.initPetDrag());
     this.applyMotion(false);
     this.tickClock();
     setInterval(this.tickClock, 1000);
